@@ -1,0 +1,65 @@
+# Build output
+**/bin/
+**/obj/
+artifacts/
+TestResults/
+coverage/
+coverage.*
+
+# Local build configuration
+Directory.Build.local.props
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# IDE and editor state
+.vs/
+.vscode/
+.idea/
+*.code-workspace
+*.DotSettings.user
+
+# Logs, dumps, and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*.old
+*.orig
+*.dmp
+*.stackdump
+
+# Compiled and packaged artifacts
+*.dll
+*.exe
+*.pdb
+*.zip
+*.7z
+*.rar
+*.nupkg
+*.snupkg
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.pfx
+*.p12
+*.snk
+secrets.json
+
+# Game and mod-loader runtime data
+BepInEx/
+*_Data/
+Saves/
+save/
+backups/
+_mod_install_backup_current/
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
+desktop.ini

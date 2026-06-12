@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="ModMenu/ModMenu.csproj" />
+  <Project Path="Tests/ModMenu.Tests.csproj" />
+</Solution>

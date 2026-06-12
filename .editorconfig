@@ -1,0 +1,16 @@
+root = true
+
+[*.cs]
+indent_style = space
+indent_size = 4
+
+# Reflection probes cross game-version boundaries and must fail without stopping the game
+dotnet_diagnostic.CA1031.severity = none
+
+# BepInEx uses a reverse-domain plugin identifier rather than a System.Guid value
+dotnet_diagnostic.CA2243.severity = none
+
+[Tests/*.cs]
+# xUnit requires public test classes and instantiates them through reflection
+dotnet_diagnostic.CA1515.severity = none
+dotnet_diagnostic.CA1812.severity = none
