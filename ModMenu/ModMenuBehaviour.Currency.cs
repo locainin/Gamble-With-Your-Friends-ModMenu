@@ -31,6 +31,7 @@ namespace ModMenu
             try
             {
                 long networkbalance = cachedMM.Networkbalance;
+                // The first sample becomes the protected balance instead of creating a refund
                 if (lastKnownBalance < 0)
                 {
                     lastKnownBalance = networkbalance;
@@ -38,8 +39,10 @@ namespace ModMenu
                 else if (networkbalance < lastKnownBalance)
                 {
                     long num = lastKnownBalance - networkbalance;
+                    // Internal changes are excluded from multiplier detection
                     isInternalMoneyChange = true;
-                    CallAddBalance(num);
+                    // Refunds restore shared funds without recording fake player earnings
+                    CallAddBalance(num, countTowardPlayerProfit: false);
                     isInternalMoneyChange = false;
                     revertCooldown = 0.3f;
                     lastKnownBalance = networkbalance;
@@ -73,6 +76,7 @@ namespace ModMenu
                 if (!(property == null))
                 {
                     long num = (long)property.GetValue(cachedMM);
+                    // A fresh manager needs one observation before spending can be detected
                     if (lastKnownTicketBalance < 0)
                     {
                         lastKnownTicketBalance = num;
@@ -121,8 +125,10 @@ namespace ModMenu
                     long num = (long)((float)(networkbalance - lastMultiplierBalance) * (moneyMultiplier - 1f));
                     if (num > 0)
                     {
+                        // Add only the bonus because the game already applied the original gain
                         isInternalMoneyChange = true;
-                        CallAddBalance(num);
+                        // Multiplier bonuses are real gains and belong in the player total
+                        CallAddBalance(num, countTowardPlayerProfit: true);
                         isInternalMoneyChange = false;
                         multiplierCooldown = 0.5f;
                         lastMultiplierBalance = networkbalance + num;
@@ -146,7 +152,7 @@ namespace ModMenu
                 return;
             }
             isInternalMoneyChange = true;
-            bool num = CallAddBalance(amount);
+            bool num = CallAddBalance(amount, countTowardPlayerProfit: true);
             isInternalMoneyChange = false;
             if (num)
             {
@@ -164,7 +170,7 @@ namespace ModMenu
                 return;
             }
             isInternalMoneyChange = true;
-            bool num = CallRemoveBalance(amount);
+            bool num = CallRemoveBalance(amount, countTowardPlayerProfit: true);
             isInternalMoneyChange = false;
             if (num)
             {
@@ -175,7 +181,7 @@ namespace ModMenu
         }
 
         // Invokes the best available game method for increasing balance
-        private bool CallAddBalance(long amount)
+        private bool CallAddBalance(long amount, bool countTowardPlayerProfit)
         {
             if (cachedMM == null)
             {
@@ -184,27 +190,31 @@ namespace ModMenu
             try
             {
                 PlayerProfile? localPlayerProfile = GetLocalPlayerProfile();
-                if (cachedMM.isServer && changeTypeGameResult != null && localPlayerProfile != null)
+                object? changeType = countTowardPlayerProfit ? changeTypePlayerProfit : changeTypeMisc;
+                if (cachedMM.isServer && changeType != null && localPlayerProfile != null)
                 {
+                    // Hosts can call the authoritative balance path directly
                     MethodInfo method = typeof(MoneyManager).GetMethod("AddBalance", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                     if (method != null)
                     {
-                        method.Invoke(cachedMM, new object[3] { amount, localPlayerProfile, changeTypeGameResult });
+                        method.Invoke(cachedMM, new object[3] { amount, localPlayerProfile, changeType });
                         return true;
                     }
                 }
-                if (changeTypeGameResult != null && localPlayerProfile != null)
+                if (changeType != null && localPlayerProfile != null)
                 {
+                    // Clients request the same change through the game command
                     MethodInfo method2 = typeof(MoneyManager).GetMethod("CmdTryChangeBalance", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                     if (method2 != null)
                     {
-                        method2.Invoke(cachedMM, new object[3] { amount, localPlayerProfile, changeTypeGameResult });
+                        method2.Invoke(cachedMM, new object[3] { amount, localPlayerProfile, changeType });
                         return true;
                     }
                 }
                 FieldInfo field = typeof(MoneyManager).GetField("balance", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                 if (field != null)
                 {
+                    // Direct synchronized state is a compatibility fallback for changed method names
                     long num = (long)field.GetValue(cachedMM);
                     field.SetValue(cachedMM, num + amount);
                     cachedMM.Networkbalance = num + amount;
@@ -219,7 +229,7 @@ namespace ModMenu
         }
 
         // Invokes the best available game method for decreasing balance
-        private bool CallRemoveBalance(long amount)
+        private bool CallRemoveBalance(long amount, bool countTowardPlayerProfit)
         {
             if (cachedMM == null)
             {
@@ -228,25 +238,27 @@ namespace ModMenu
             try
             {
                 PlayerProfile? localPlayerProfile = GetLocalPlayerProfile();
-                if (cachedMM.isServer && changeTypeGameResult != null && localPlayerProfile != null)
+                object? changeType = countTowardPlayerProfit ? changeTypePlayerProfit : changeTypeMisc;
+                if (cachedMM.isServer && changeType != null && localPlayerProfile != null)
                 {
+                    // Keep normal host-side accounting and notifications when available
                     MethodInfo method = typeof(MoneyManager).GetMethod("RemoveBalance", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                     if (method != null)
                     {
-                        method.Invoke(cachedMM, new object[3] { amount, localPlayerProfile, changeTypeGameResult });
+                        method.Invoke(cachedMM, new object[3] { amount, localPlayerProfile, changeType });
                         return true;
                     }
                 }
-                if (changeTypeGameResult != null && localPlayerProfile != null)
+                if (changeType != null && localPlayerProfile != null)
                 {
                     MethodInfo method2 = typeof(MoneyManager).GetMethod("CmdTryChangeBalance", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                     if (method2 != null)
                     {
                         method2.Invoke(cachedMM, new object[3]
                         {
-                        -amount,
-                        localPlayerProfile,
-                        changeTypeGameResult
+                            -amount,
+                            localPlayerProfile,
+                            changeType
                         });
                         return true;
                     }
@@ -254,6 +266,7 @@ namespace ModMenu
                 FieldInfo field = typeof(MoneyManager).GetField("balance", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                 if (field != null)
                 {
+                    // Balance never falls below the game's zero lower bound
                     long num = (long)field.GetValue(cachedMM) - amount;
                     if (num < 0)
                     {
@@ -292,7 +305,7 @@ namespace ModMenu
                 long num = networkcurrentQuota - networkbalance;
                 ModMenuLoader.Log($"MeetQuota: adding ${num} to reach quota");
                 isInternalMoneyChange = true;
-                bool num2 = CallAddBalance(num);
+                bool num2 = CallAddBalance(num, countTowardPlayerProfit: true);
                 isInternalMoneyChange = false;
                 if (num2)
                 {
@@ -318,6 +331,7 @@ namespace ModMenu
             {
                 if (cachedGM != null && cachedGM.isServer)
                 {
+                    // Hosts use the direct ticket mutation before trying a command path
                     MethodInfo method = typeof(MoneyManager).GetMethod("AddTicket", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                     if (method != null)
                     {

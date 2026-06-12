@@ -46,12 +46,11 @@ namespace ModMenu
             }
         }
 
-        // Renders controls that operate entirely on the local client
+        // Directs clients to contextual controls without duplicating the player inspector
         private void DrawClientSessionControls()
         {
             PlayerProfile? localProfile = GetLocalPlayerProfile();
-            PlayerController? localPlayer = localProfile != null ? localProfile.GetComponent<PlayerController>() : cachedLocalPC;
-            if (localProfile == null || localPlayer == null)
+            if (localProfile == null)
             {
                 DrawSection("Client Controls");
                 GUILayout.Label("  Join a lobby to load local controls", bodyLabelStyle);
@@ -59,8 +58,7 @@ namespace ModMenu
             }
 
             DrawSection("Client Capability");
-            GUILayout.Label("  These controls run locally and do not require host authority", smallLabelStyle);
-            DrawLocalMovementControls(localProfile, localPlayer);
+            GUILayout.Label("  Select the local profile in Players for movement and pickup protection", smallLabelStyle);
         }
 
         // Restores every registered player through the persistent organ path

@@ -44,6 +44,7 @@ namespace ModMenu
                             arg = (fieldInfo2.GetValue(spawnableSO) as string) ?? "unknown";
                         }
                         Transform transform = ((Camera.main != null) ? Camera.main.transform : cachedLocalPC.transform);
+                        // Front placement keeps the new item visible and away from the player collider
                         Vector3 vector = cachedLocalPC.transform.position + transform.forward * 2f + Vector3.up * 0.5f;
                         GameObject gameObject2 = UnityEngine.Object.Instantiate(gameObject, vector, Quaternion.identity);
                         SpawnOnNetwork(gameObject2);
@@ -65,6 +66,7 @@ namespace ModMenu
             {
                 if (itemStampManagerType == null)
                 {
+                    // Resolve the manager lazily because lobby scenes may load before its assembly
                     Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
                     foreach (Assembly assembly in assemblies)
                     {
@@ -87,6 +89,7 @@ namespace ModMenu
                 }
                 if (obj == null)
                 {
+                    // Inactive singleton instances remain visible through the Resources lookup
                     UnityEngine.Object[] array = Resources.FindObjectsOfTypeAll(itemStampManagerType);
                     if (array.Length != 0)
                     {
@@ -114,6 +117,7 @@ namespace ModMenu
         {
             if (networkServerType == null)
             {
+                // Mirror is loaded by the game and resolved without adding another package dependency
                 Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
                 foreach (Assembly assembly in assemblies)
                 {
@@ -131,6 +135,7 @@ namespace ModMenu
                 {
                     if (methodInfo.Name == "Spawn")
                     {
+                        // Select the overload whose first argument is the spawned GameObject
                         ParameterInfo[] parameters = methodInfo.GetParameters();
                         if (parameters.Length >= 1 && parameters[0].ParameterType == typeof(GameObject))
                         {

@@ -8,6 +8,8 @@ namespace ModMenu
     {
         private static readonly HashSet<ulong> ProtectedSteamIds = new HashSet<ulong>();
 
+        private static readonly HashSet<ulong> NoGrabSteamIds = new HashSet<ulong>();
+
         // Harmony remains alive for the plugin lifetime so patches remain registered
         private static readonly Harmony HarmonyInstance = new Harmony("com.casinomenu.gamblewithfriends.organprotection");
 
@@ -64,16 +66,53 @@ namespace ModMenu
             return playerProfile != null && IsProtected(playerProfile.steamId);
         }
 
+        // Adds or removes one Steam ID from pickup protection
+        internal static void SetNoGrab(ulong steamId, bool isProtected)
+        {
+            if (steamId == 0uL)
+            {
+                return;
+            }
+
+            if (isProtected)
+            {
+                NoGrabSteamIds.Add(steamId);
+                return;
+            }
+
+            NoGrabSteamIds.Remove(steamId);
+        }
+
+        // Checks whether a Steam ID has pickup protection enabled
+        internal static bool IsNoGrab(ulong steamId)
+        {
+            return steamId != 0uL && NoGrabSteamIds.Contains(steamId);
+        }
+
+        // Checks whether one player body rejects pickup requests
+        internal static bool IsNoGrab(PlayerCarry playerCarry)
+        {
+            if (playerCarry == null)
+            {
+                return false;
+            }
+
+            PlayerProfile playerProfile = playerCarry.GetComponent<PlayerProfile>();
+            return playerProfile != null && IsNoGrab(playerProfile.steamId);
+        }
+
         // Removes protection entries that no longer belong to the active lobby
         internal static void RetainConnectedPlayers(IEnumerable<ulong> connectedSteamIds)
         {
             ProtectedSteamIds.IntersectWith(connectedSteamIds);
+            NoGrabSteamIds.IntersectWith(connectedSteamIds);
         }
 
         // Clears session-owned protection when no lobby identity remains valid
         internal static void Clear()
         {
             ProtectedSteamIds.Clear();
+            NoGrabSteamIds.Clear();
         }
 
         // Normalizes organ data to a fully healthy state

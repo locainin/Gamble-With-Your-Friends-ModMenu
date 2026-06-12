@@ -127,6 +127,7 @@ namespace ModMenu
                 else if (current.keyCode == menuToggleKey)
                 {
                     showMenu = !showMenu;
+                    IsMenuOpen = showMenu;
                     current.Use();
                 }
                 else if (flyToggleKey != KeyCode.None && current.keyCode == flyToggleKey)

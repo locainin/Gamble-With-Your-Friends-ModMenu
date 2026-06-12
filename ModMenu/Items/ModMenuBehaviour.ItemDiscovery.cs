@@ -19,6 +19,7 @@ namespace ModMenu
             }
             try
             {
+                // Resources includes inactive manager objects that scene-only searches can miss
                 UnityEngine.Object[] array = Resources.FindObjectsOfTypeAll(itemManagerType);
                 if (array.Length != 0)
                 {
@@ -32,6 +33,7 @@ namespace ModMenu
             }
             try
             {
+                // The generic Unity lookup is invoked through reflection because the type is runtime-only
                 MethodInfo method = typeof(UnityEngine.Object).GetMethod("FindObjectOfType", Type.EmptyTypes);
                 if (method != null)
                 {
@@ -52,6 +54,7 @@ namespace ModMenu
             {
                 if (itemManagerType == null || spawnableSettingsType == null || spawnableSOType == null)
                 {
+                    // Runtime type discovery avoids compile-time dependencies on internal game classes
                     Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
                     foreach (Assembly assembly in assemblies)
                     {
@@ -92,6 +95,7 @@ namespace ModMenu
                 }
                 if (cachedSpawnableSettings == null)
                 {
+                    // Prefer an active settings object before searching all loaded resources
                     MethodInfo method = typeof(UnityEngine.Object).GetMethod("FindObjectOfType", Array.Empty<Type>());
                     if (method != null)
                     {
@@ -139,6 +143,7 @@ namespace ModMenu
                     }
                     if (cachedItemManager != null && itemManagerType != null)
                     {
+                        // Some builds keep settings in a private manager field instead of the scene
                         FieldInfo[] fields = itemManagerType.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                         foreach (FieldInfo fieldInfo in fields)
                         {
@@ -182,10 +187,12 @@ namespace ModMenu
                     object? obj2 = null;
                     if (spawnableSOType.IsInstanceOfType(item))
                     {
+                        // Newer settings lists may contain SpawnableSO entries directly
                         obj2 = item;
                     }
                     else
                     {
+                        // Older builds wrap the SpawnableSO in another settings record
                         FieldInfo field4 = item.GetType().GetField("spawnable", BindingFlags.Instance | BindingFlags.Public);
                         if (field4 != null)
                         {
@@ -199,6 +206,7 @@ namespace ModMenu
                     string text = (field3?.GetValue(obj2) as string) ?? "???";
                     if (field2 != null && itemType != null)
                     {
+                        // Only prefabs containing a grabbable Item belong in the spawner
                         GameObject? gameObject = field2.GetValue(obj2) as GameObject;
                         if (gameObject == null || gameObject.GetComponentInChildren(itemType) == null)
                         {
@@ -215,6 +223,7 @@ namespace ModMenu
                 {
                     try
                     {
+                        // Scene objects reveal valid spawnables omitted from the shared settings asset
                         UnityEngine.Object[] array3 = UnityEngine.Object.FindObjectsByType(itemType, FindObjectsSortMode.None);
                         ModMenuLoader.Log($"Scene scan: found {array3.Length} Item instances");
                         HashSet<int> hashSet = new HashSet<int>();
@@ -246,6 +255,7 @@ namespace ModMenu
                                 string text2 = (field3?.GetValue(value2) as string) ?? "???";
                                 if (!hashSet.Contains(num2) && !(text2 == "Cosmetic Item"))
                                 {
+                                    // Spawnable IDs prevent duplicate menu rows across both discovery paths
                                     hashSet.Add(num2);
                                     list2.Add(value2);
                                     num++;

@@ -228,6 +228,7 @@ namespace ModMenu
             {
                 return;
             }
+            // Runtime textures keep every theme self-contained without external asset loading
             ApplyThemePalette();
             panelTexture = MakeUiTexture(panelColor);
             headerTexture = MakeUiTexture(headerColor);
@@ -268,6 +269,7 @@ namespace ModMenu
             GUI.skin.textField.padding = new RectOffset(8, 8, 4, 4);
             GUI.skin.textField.margin = new RectOffset(0, 0, 3, 3);
             GUI.skin.textField.fixedHeight = 25f;
+            // Slider styles use fixed dimensions so changing values cannot shift surrounding rows
             sliderTrackStyle = new GUIStyle(GUI.skin.horizontalSlider)
             {
                 normal =
@@ -354,6 +356,7 @@ namespace ModMenu
             tabStyle.normal.textColor = bodyTextColor;
             tabStyle.hover.textColor = buttonHoverTextColor;
             activeTabStyle = new GUIStyle(tabStyle);
+            // Active navigation shares geometry with normal tabs and changes only presentation
             activeTabStyle.normal.background = activeTabTexture;
             activeTabStyle.normal.textColor = Color.white;
             activeTabStyle.hover.background = activeTabTexture;
@@ -387,6 +390,7 @@ namespace ModMenu
         {
             Texture2D texture2D = new Texture2D(8, 8, TextureFormat.RGBA32, mipChain: false);
             texture2D.hideFlags = HideFlags.HideAndDontSave;
+            // One-pixel edges remain crisp when Unity stretches the texture over a control
             for (int y = 0; y < 8; y++)
             {
                 for (int x = 0; x < 8; x++)

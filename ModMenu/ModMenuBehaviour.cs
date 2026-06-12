@@ -14,6 +14,12 @@ namespace ModMenu
         // Window state stays separate from gameplay state so closing the menu never disables features
         private bool showMenu = true;
 
+        // Harmony input patches read this without searching the scene every input event
+        internal static bool IsMenuOpen { get; private set; }
+
+        // Tracks the open transition so held controls are released exactly once
+        private bool wasMenuOpen;
+
         private Rect windowRect = new Rect(20f, 20f, 780f, 560f);
 
         private int currentTab;
@@ -177,7 +183,11 @@ namespace ModMenu
 
         private Type? itemType;
 
-        private object? changeTypeGameResult;
+        // GameResult changes appear in the per-player profit history
+        private object? changeTypePlayerProfit;
+
+        // Misc changes alter shared balance without inflating player profit
+        private object? changeTypeMisc;
 
         private bool changeTypeResolved;
 
@@ -351,6 +361,7 @@ namespace ModMenu
         private void Awake()
         {
             showMenu = true;
+            IsMenuOpen = true;
             ModMenuLoader.Log("ModMenuBehaviour.Awake()!");
             PlayerProtectionState.EnsurePatched();
             disableUpdateReminder = PlayerPrefs.GetInt("CasinoMenu_DisableUpdateReminder", 0) == 1;
@@ -467,6 +478,9 @@ namespace ModMenu
             {
                 yield return new WaitForSecondsRealtime(delay);
                 RefreshCache();
+
+                // Pickup protection is independent from host-only organ persistence
+                ReapplyPlayerGrabProtections(cachedGM != null && cachedGM.isServer);
 
                 if (cachedGM == null || !cachedGM.isServer)
                 {
@@ -591,9 +605,32 @@ namespace ModMenu
             }
         }
 
+        // Keeps gameplay input and cursor ownership aligned with the visible menu
+        private void LateUpdate()
+        {
+            IsMenuOpen = showMenu;
+            if (!showMenu)
+            {
+                wasMenuOpen = false;
+                return;
+            }
+
+            if (!wasMenuOpen)
+            {
+                // Releasing held controls prevents movement from continuing after the menu opens
+                GameplayInputRelease.Send();
+                wasMenuOpen = true;
+            }
+
+            // The game may relock the cursor later in the frame
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
+
         // Restores process-wide state and removes scene handlers during teardown
         private void OnDestroy()
         {
+            IsMenuOpen = false;
             SceneManager.sceneLoaded -= OnGameSceneLoaded;
             if (sceneRecoveryCoroutine != null)
             {

@@ -187,6 +187,13 @@ namespace ModMenu
 
             DrawNpcFollowPlayerControl(profile, isHost);
             DrawPlayerVisibilityControl(profile);
+            DrawPlayerGrabProtection(profile, isHost);
+
+            // Movement settings belong to the locally owned player on both host and client
+            if (profile.isLocalPlayer)
+            {
+                DrawLocalMovementControls(profile, playerController);
+            }
 
             if (!isHost)
             {

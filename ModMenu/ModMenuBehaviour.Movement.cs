@@ -28,6 +28,7 @@ namespace ModMenu
                 FieldInfo field = cachedPlayerSettings.GetType().GetField("gravity", BindingFlags.Instance | BindingFlags.Public);
                 if (originalMaxSpeed < 0f)
                 {
+                    // Base values are captured once for this scene and restored when toggles turn off
                     originalMaxSpeed = (float)fMaxSpeed.GetValue(cachedPlayerSettings);
                     originalSprintMaxSpeed = (float)fSprintSpeed.GetValue(cachedPlayerSettings);
                     originalAcceleration = (float)fAccel.GetValue(cachedPlayerSettings);
@@ -160,6 +161,7 @@ namespace ModMenu
                 {
                     if (!wasFlying)
                     {
+                        // Kinematic mode prevents physics from fighting direct position movement
                         rigidbody.isKinematic = true;
                         wasFlying = true;
                     }
@@ -168,12 +170,14 @@ namespace ModMenu
                     FieldInfo field2 = typeof(PlayerController).GetField("_moveInput", BindingFlags.Instance | BindingFlags.NonPublic);
                     if (field2 != null)
                     {
+                        // Reuse the game's processed input so rebinding and controllers still work
                         Vector2 vector = (Vector2)field2.GetValue(cachedLocalPC);
                         zero += transform.forward * vector.y;
                         zero += transform.right * vector.x;
                     }
                     else
                     {
+                        // Keyboard polling remains available when the private input field changes
                         if (IsKeyDown(KeyCode.W))
                         {
                             zero += transform.forward;
@@ -203,6 +207,7 @@ namespace ModMenu
                 }
                 else if (wasFlying)
                 {
+                    // Physics resumes only after a no-clip session actually changed the body
                     rigidbody.isKinematic = false;
                     wasFlying = false;
                 }

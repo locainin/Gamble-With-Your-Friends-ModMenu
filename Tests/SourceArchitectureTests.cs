@@ -19,6 +19,9 @@ public sealed class SourceArchitectureTests
         Assert.True(File.Exists(Path.Combine(modRoot, "Players", "ModMenuBehaviour.PlayerOrgans.cs")));
         Assert.True(File.Exists(Path.Combine(modRoot, "Players", "ModMenuBehaviour.PlayerActions.cs")));
         Assert.True(File.Exists(Path.Combine(modRoot, "Players", "ModMenuBehaviour.PlayerNpcFollow.cs")));
+        Assert.True(File.Exists(Path.Combine(modRoot, "Players", "ModMenuBehaviour.PlayerMovement.cs")));
+        Assert.True(File.Exists(Path.Combine(modRoot, "Players", "ModMenuBehaviour.PlayerGrabProtection.cs")));
+        Assert.True(File.Exists(Path.Combine(modRoot, "Players", "PlayerCarryProtectionPatches.cs")));
         Assert.True(File.Exists(Path.Combine(modRoot, "Items", "ModMenuBehaviour.ItemDiscovery.cs")));
         Assert.True(File.Exists(Path.Combine(modRoot, "Items", "ModMenuBehaviour.ItemSpawning.cs")));
         Assert.True(File.Exists(Path.Combine(modRoot, "Items", "ModMenuBehaviour.ItemsTab.cs")));
@@ -143,6 +146,22 @@ public sealed class SourceArchitectureTests
     }
 
     [Fact]
+    public void MenuInputCaptureShipsInsideTheMainPlugin()
+    {
+        string behaviour = File.ReadAllText(Path.Combine(ProjectRoot, "ModMenu", "ModMenuBehaviour.cs"));
+        string inputCapture = File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "Input", "GameplayInputCapture.cs"));
+
+        Assert.Contains("internal static bool IsMenuOpen", behaviour, StringComparison.Ordinal);
+        Assert.Contains("GameplayInputRelease.Send()", behaviour, StringComparison.Ordinal);
+        Assert.Contains("Cursor.lockState = CursorLockMode.None", behaviour, StringComparison.Ordinal);
+        Assert.Contains("InputReaderGameplayPatch", inputCapture, StringComparison.Ordinal);
+        Assert.Contains("return !ModMenuBehaviour.IsMenuOpen", inputCapture, StringComparison.Ordinal);
+        Assert.Contains("\"OnMove\"", inputCapture, StringComparison.Ordinal);
+        Assert.Contains("\"OnInteract\"", inputCapture, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DayChangerUpdatesCoupledProgressionAndPersists()
     {
         string progression = File.ReadAllText(
@@ -180,6 +199,56 @@ public sealed class SourceArchitectureTests
         Assert.Contains("profile.isLocalPlayer", playerList, StringComparison.Ordinal);
         Assert.Contains("visibility!.ToggleVisibility()", playerList, StringComparison.Ordinal);
         Assert.Contains("Make Invisible", playerList, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ManualMoneyChangesUpdatePlayerProfitWhileRefundsDoNot()
+    {
+        string currency = File.ReadAllText(Path.Combine(ProjectRoot, "ModMenu", "ModMenuBehaviour.Currency.cs"));
+        string cache = File.ReadAllText(Path.Combine(ProjectRoot, "ModMenu", "ModMenuBehaviour.Cache.cs"));
+
+        Assert.Contains("CallAddBalance(amount, countTowardPlayerProfit: true)", currency, StringComparison.Ordinal);
+        Assert.Contains("CallRemoveBalance(amount, countTowardPlayerProfit: true)", currency, StringComparison.Ordinal);
+        Assert.Contains("CallAddBalance(num, countTowardPlayerProfit: false)", currency, StringComparison.Ordinal);
+        Assert.Contains("names[j] == \"GameResult\"", cache, StringComparison.Ordinal);
+        Assert.Contains("names[j] == \"Misc\"", cache, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LocalMovementControlsLiveInPlayerInspectorForHostAndClient()
+    {
+        string playerList = File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "Players", "ModMenuBehaviour.PlayerList.cs"));
+        string session = File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "Tabs", "ModMenuBehaviour.SessionTab.cs"));
+        string movement = File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "Players", "ModMenuBehaviour.PlayerMovement.cs"));
+
+        Assert.Contains("if (profile.isLocalPlayer)", playerList, StringComparison.Ordinal);
+        Assert.Contains("DrawLocalMovementControls(profile, playerController)", playerList, StringComparison.Ordinal);
+        Assert.DoesNotContain("DrawLocalMovementControls(", session, StringComparison.Ordinal);
+        Assert.Contains("Speed Modifier", movement, StringComparison.Ordinal);
+        Assert.Contains("Jump Modifier", movement, StringComparison.Ordinal);
+        Assert.Contains("No Clip", movement, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NoGrabBlocksPickupBeforeServerAssignsHolder()
+    {
+        string controls = File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "Players", "ModMenuBehaviour.PlayerGrabProtection.cs"));
+        string patch = File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "Players", "PlayerCarryProtectionPatches.cs"));
+        string state = File.ReadAllText(Path.Combine(ProjectRoot, "ModMenu", "PlayerProtectionState.cs"));
+
+        Assert.Contains("[HarmonyPatch(typeof(Item), \"ServerPickup\")]", patch, StringComparison.Ordinal);
+        Assert.Contains("!PlayerProtectionState.IsNoGrab(playerCarry)", patch, StringComparison.Ordinal);
+        Assert.Contains("holderInventory.ServerDropHoldingItem()", controls, StringComparison.Ordinal);
+        Assert.Contains("playerCarry.LocalSetInteractable(!isProtected)", controls, StringComparison.Ordinal);
+        Assert.Contains("NO GRAB ACTIVE", controls, StringComparison.Ordinal);
+        Assert.Contains("ReapplyPlayerGrabProtections(cachedGM != null && cachedGM.isServer)", File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "ModMenuBehaviour.cs")), StringComparison.Ordinal);
+        Assert.Contains("NoGrabSteamIds.IntersectWith(connectedSteamIds)", state, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -23,6 +23,7 @@ namespace ModMenu
             {
                 if (cachedLocalPC == null)
                 {
+                    // Local ownership is more reliable than object order in multiplayer scenes
                     PlayerController[] array = UnityEngine.Object.FindObjectsByType<PlayerController>(FindObjectsSortMode.None);
                     foreach (PlayerController playerController in array)
                     {
@@ -34,6 +35,7 @@ namespace ModMenu
                         FieldInfo field = typeof(PlayerController).GetField("_ps", BindingFlags.Instance | BindingFlags.NonPublic);
                         if (field != null)
                         {
+                            // Movement settings are stored behind the controller private field
                             cachedPlayerSettings = field.GetValue(playerController);
                             if (cachedPlayerSettings != null)
                             {
@@ -49,6 +51,7 @@ namespace ModMenu
                 }
                 if (cachedMM == null)
                 {
+                    // MoneyManager is scene-owned and must be reacquired after floor changes
                     MoneyManager[] array2 = UnityEngine.Object.FindObjectsByType<MoneyManager>(FindObjectsSortMode.None);
                     if (array2.Length != 0)
                     {
@@ -66,6 +69,7 @@ namespace ModMenu
                 }
                 if (!changeTypeResolved)
                 {
+                    // Enum discovery is delayed until the game assembly has finished loading
                     ResolveChangeType();
                 }
                 if (cachedSpawnables == null && cachedLocalPC != null)
@@ -136,13 +140,14 @@ namespace ModMenu
             }
         }
 
-        // Finds the game result enum value used by money operations
+        // Resolves both visible profit and bookkeeping-only money categories
         private void ResolveChangeType()
         {
             Type? type = null;
             Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
             for (int i = 0; i < assemblies.Length; i++)
             {
+                // The type has no namespace in current builds, so every loaded assembly is checked
                 type = assemblies[i].GetType("ChangeType");
                 if (type != null)
                 {
@@ -157,17 +162,31 @@ namespace ModMenu
             Array values = Enum.GetValues(type);
             for (int j = 0; j < names.Length; j++)
             {
-                if (names[j] == "Misc")
+                if (names[j] == "GameResult")
                 {
-                    changeTypeGameResult = values.GetValue(j);
-                    break;
+                    changeTypePlayerProfit = values.GetValue(j);
+                }
+                else if (names[j] == "Misc")
+                {
+                    changeTypeMisc = values.GetValue(j);
                 }
             }
-            if (changeTypeGameResult == null)
+
+            // GameResult is required for the scoreboard and player profit history
+            if (changeTypePlayerProfit == null)
             {
-                changeTypeGameResult = values.GetValue(values.Length - 1);
+                ModMenuLoader.Log("ChangeType.GameResult was not found");
+                return;
             }
-            ModMenuLoader.Log($"Using ChangeType: {changeTypeGameResult}");
+
+            // Misc is the safest category for refunds that must not count as earnings
+            if (changeTypeMisc == null)
+            {
+                changeTypeMisc = changeTypePlayerProfit;
+                ModMenuLoader.Log("ChangeType.Misc was not found; using GameResult fallback");
+            }
+
+            ModMenuLoader.Log($"Using money ChangeTypes: profit={changeTypePlayerProfit}, misc={changeTypeMisc}");
             changeTypeResolved = true;
         }
 
@@ -178,6 +197,7 @@ namespace ModMenu
             {
                 if (cachedLocalPC != null)
                 {
+                    // Component hierarchy differs between lobby and casino scenes
                     PlayerProfile playerProfile = cachedLocalPC.GetComponent<PlayerProfile>() ?? cachedLocalPC.GetComponentInParent<PlayerProfile>() ?? cachedLocalPC.GetComponentInChildren<PlayerProfile>();
                     if (playerProfile != null)
                     {
