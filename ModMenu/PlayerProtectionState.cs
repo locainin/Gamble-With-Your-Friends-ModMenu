@@ -144,15 +144,7 @@ namespace ModMenu
             return playerProfile != null && IsNoGrab(playerProfile.steamId);
         }
 
-        // Removes protection entries that no longer belong to the active lobby
-        internal static void RetainConnectedPlayers(IEnumerable<ulong> connectedSteamIds)
-        {
-            ProtectedSteamIds.IntersectWith(connectedSteamIds);
-            NoGrabSteamIds.IntersectWith(connectedSteamIds);
-            NoHitSteamIds.IntersectWith(connectedSteamIds);
-        }
-
-        // Clears session-owned protection when no lobby identity remains valid
+        // Clears protection when this plugin process ends
         internal static void Clear()
         {
             ProtectedSteamIds.Clear();

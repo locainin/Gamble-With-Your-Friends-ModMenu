@@ -493,13 +493,13 @@ namespace ModMenu
                 yield return new WaitForSecondsRealtime(delay);
                 RefreshCache();
 
-                // Pickup protection is independent from host-only organ persistence
-                ReapplyPlayerGrabProtections(cachedGM != null && cachedGM.isServer);
-
                 if (cachedGM == null || !cachedGM.isServer)
                 {
                     continue;
                 }
+
+                // Only the server process can enforce pickup rejection
+                ReapplyPlayerGrabProtections();
 
                 OrganManager organManager = UnityEngine.Object.FindFirstObjectByType<OrganManager>();
                 if (organManager != null)
@@ -523,32 +523,17 @@ namespace ModMenu
                 return;
             }
 
-            List<ulong> connectedSteamIds = new List<ulong>(profiles.Length);
-            bool identitySnapshotComplete = true;
             foreach (PlayerProfile profile in profiles)
             {
-                if (profile == null)
+                if (profile == null || !profile.hasSynced || profile.steamId == 0uL)
                 {
-                    continue;
-                }
-                if (!profile.hasSynced || profile.steamId == 0uL)
-                {
-                    // A partial Mirror snapshot cannot prove that an older Steam ID disconnected
-                    identitySnapshotComplete = false;
                     continue;
                 }
 
-                connectedSteamIds.Add(profile.steamId);
                 if (PlayerProtectionState.IsProtected(profile.steamId))
                 {
                     organManager.SetOrganDataBySteamId(profile.steamId, true, true, true, true);
                 }
-            }
-
-            // Lobby changes cannot leave protection attached to disconnected Steam IDs
-            if (identitySnapshotComplete)
-            {
-                PlayerProtectionState.RetainConnectedPlayers(connectedSteamIds);
             }
         }
 
@@ -570,12 +555,12 @@ namespace ModMenu
             // A slow interval covers late joins without scanning every frame
             protectionRecoveryTimer = 5f;
             bool isHost = cachedGM != null && cachedGM.isServer;
-            ReapplyPlayerGrabProtections(isHost);
             if (!isHost)
             {
                 return;
             }
 
+            ReapplyPlayerGrabProtections();
             OrganManager? organManager = UnityEngine.Object.FindFirstObjectByType<OrganManager>();
             if (organManager != null)
             {

@@ -19,8 +19,12 @@ namespace ModMenu
             string actionLabel = requestedVisibility ? "Make Visible" : "Make Invisible";
             if (GUILayout.Button(actionLabel) && visibility != null)
             {
-                SetLocalPlayerVisibility(visibility, requestedVisibility);
-                visibilityModifiedPlayerInstanceId = profile.GetInstanceID();
+                if (SetLocalPlayerVisibility(visibility, requestedVisibility))
+                {
+                    visibilityModifiedPlayerInstanceId = requestedVisibility
+                        ? 0
+                        : profile.GetInstanceID();
+                }
             }
 
             GUI.enabled = previousEnabled;
@@ -44,20 +48,24 @@ namespace ModMenu
             CameramanMode? visibility = previousProfile != null
                 ? previousProfile.GetComponent<CameramanMode>()
                 : null;
-            if (visibility != null && previousProfile!.isLocalPlayer && !visibility.IsVisible)
+            if (visibility != null && previousProfile!.isLocalPlayer)
             {
-                SetLocalPlayerVisibility(visibility, true);
+                // A forced restore is queued after any hide command still in flight
+                SetLocalPlayerVisibility(visibility, true, force: true);
             }
 
             visibilityModifiedPlayerInstanceId = 0;
         }
 
         // Sends an explicit value so stale replicated state cannot invert the wrong direction
-        private static void SetLocalPlayerVisibility(CameramanMode visibility, bool isVisible)
+        private static bool SetLocalPlayerVisibility(
+            CameramanMode visibility,
+            bool isVisible,
+            bool force = false)
         {
-            if (visibility.IsVisible == isVisible)
+            if (!force && visibility.IsVisible == isVisible)
             {
-                return;
+                return true;
             }
 
             try
@@ -68,14 +76,16 @@ namespace ModMenu
                 if (command == null)
                 {
                     ModMenuLoader.Log("Visibility command was not found");
-                    return;
+                    return false;
                 }
 
                 command.Invoke(visibility, new object[] { isVisible });
+                return true;
             }
             catch (Exception ex)
             {
                 ModMenuLoader.Log("Visibility update error: " + ex.Message);
+                return false;
             }
         }
 
@@ -90,9 +100,10 @@ namespace ModMenu
             PlayerProfile[] profiles = UnityEngine.Object.FindObjectsByType<PlayerProfile>(FindObjectsSortMode.None);
             PlayerProfile? profile = FindPlayerProfileByInstanceId(profiles, visibilityModifiedPlayerInstanceId);
             CameramanMode? visibility = profile != null ? profile.GetComponent<CameramanMode>() : null;
-            if (visibility != null && profile!.isLocalPlayer && !visibility.IsVisible)
+            if (visibility != null && profile!.isLocalPlayer)
             {
-                SetLocalPlayerVisibility(visibility, true);
+                // Do not trust replicated state while a previous command may still be pending
+                SetLocalPlayerVisibility(visibility, true, force: true);
             }
 
             visibilityModifiedPlayerInstanceId = 0;

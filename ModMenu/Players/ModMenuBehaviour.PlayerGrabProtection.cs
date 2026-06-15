@@ -9,16 +9,14 @@ namespace ModMenu
         private static readonly MethodInfo? PlayerCarryRpcSetInteractableMethod =
             typeof(PlayerCarry).GetMethod("RpcSetInteractable", BindingFlags.Instance | BindingFlags.NonPublic);
 
-        // Renders pickup protection for host-selected players or the local client
+        // Renders pickup protection only where the server pickup patch can enforce it
         private void DrawPlayerGrabProtection(PlayerProfile playerProfile, bool isHost)
         {
             DrawSection("Pickup Protection");
 
             PlayerCarry playerCarry = playerProfile.GetComponent<PlayerCarry>();
             bool hasStableIdentity = playerProfile.hasSynced && playerProfile.steamId != 0uL;
-            bool canChange = playerCarry != null &&
-                hasStableIdentity &&
-                (isHost || playerProfile.isLocalPlayer);
+            bool canChange = playerCarry != null && hasStableIdentity && isHost;
             bool wasEnabled = GUI.enabled;
             GUI.enabled = wasEnabled && canChange;
 
@@ -29,7 +27,7 @@ namespace ModMenu
 
             if (requestedProtection != isProtected)
             {
-                SetPlayerGrabProtection(playerProfile, requestedProtection, isHost);
+                SetPlayerGrabProtection(playerProfile, requestedProtection);
             }
 
             GUI.enabled = wasEnabled;
@@ -37,13 +35,13 @@ namespace ModMenu
             {
                 string reason = !hasStableIdentity
                     ? "  Waiting for Steam identity synchronization"
-                    : "  Host authority or local ownership is required";
+                    : "  Host authority is required";
                 GUILayout.Label(reason, smallLabelStyle);
             }
         }
 
-        // Applies pickup protection through the authority path owned by this process
-        private static void SetPlayerGrabProtection(PlayerProfile playerProfile, bool isProtected, bool isHost)
+        // Applies pickup protection through the host-owned server path
+        private static void SetPlayerGrabProtection(PlayerProfile playerProfile, bool isProtected)
         {
             if (playerProfile == null || playerProfile.steamId == 0uL)
             {
@@ -61,25 +59,15 @@ namespace ModMenu
 
             try
             {
-                if (isHost)
+                // A held player is dropped before future pickup requests are blocked
+                if (isProtected && playerCarry.TryGetHolderInventory(out PlayerInventory holderInventory))
                 {
-                    // A held player is dropped before future pickup requests are blocked
-                    if (isProtected && playerCarry.TryGetHolderInventory(out PlayerInventory holderInventory))
-                    {
-                        holderInventory.ServerDropHoldingItem();
-                    }
-
-                    // The host updates every client cursor while the patch enforces the rule
-                    playerCarry.IsInteractable = !isProtected;
-                    PlayerCarryRpcSetInteractableMethod?.Invoke(playerCarry, new object[1] { !isProtected });
-                    return;
+                    holderInventory.ServerDropHoldingItem();
                 }
 
-                if (playerProfile.isLocalPlayer)
-                {
-                    // The owned command asks the server to replicate local pickup availability
-                    playerCarry.LocalSetInteractable(!isProtected);
-                }
+                // The host updates every client cursor while the patch enforces the rule
+                playerCarry.IsInteractable = !isProtected;
+                PlayerCarryRpcSetInteractableMethod?.Invoke(playerCarry, new object[1] { !isProtected });
             }
             catch (Exception ex)
             {
@@ -89,7 +77,7 @@ namespace ModMenu
         }
 
         // Reapplies pickup visibility after scene objects are recreated
-        private static void ReapplyPlayerGrabProtections(bool isHost)
+        private static void ReapplyPlayerGrabProtections()
         {
             PlayerProfile[] profiles = UnityEngine.Object.FindObjectsByType<PlayerProfile>(FindObjectsSortMode.None);
             foreach (PlayerProfile playerProfile in profiles)
@@ -107,17 +95,9 @@ namespace ModMenu
 
                 try
                 {
-                    if (isHost)
-                    {
-                        // Host replication updates interaction cursors for every connected client
-                        playerCarry.IsInteractable = false;
-                        PlayerCarryRpcSetInteractableMethod?.Invoke(playerCarry, new object[1] { false });
-                    }
-                    else if (playerProfile.isLocalPlayer)
-                    {
-                        // A client can only restore the command on its owned player object
-                        playerCarry.LocalSetInteractable(false);
-                    }
+                    // Host replication updates interaction cursors for every connected client
+                    playerCarry.IsInteractable = false;
+                    PlayerCarryRpcSetInteractableMethod?.Invoke(playerCarry, new object[1] { false });
                 }
                 catch (Exception ex)
                 {
