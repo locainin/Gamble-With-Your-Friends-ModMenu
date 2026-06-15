@@ -47,7 +47,13 @@ namespace ModMenu
                         // Front placement keeps the new item visible and away from the player collider
                         Vector3 vector = cachedLocalPC.transform.position + transform.forward * 2f + Vector3.up * 0.5f;
                         GameObject gameObject2 = UnityEngine.Object.Instantiate(gameObject, vector, Quaternion.identity);
-                        SpawnOnNetwork(gameObject2);
+                        if (!SpawnOnNetwork(gameObject2))
+                        {
+                            // A server-only clone must not survive when clients cannot receive its identity
+                            UnityEngine.Object.Destroy(gameObject2);
+                            ModMenuLoader.Log($"Failed to network-spawn {arg}");
+                            return;
+                        }
                         MarkItemPurchased(gameObject2);
                         ModMenuLoader.Log($"Spawned {arg} at {vector}");
                     }
@@ -113,48 +119,29 @@ namespace ModMenu
         }
 
         // Registers a spawned object with Mirror when hosting
-        private void SpawnOnNetwork(GameObject go)
+        private bool SpawnOnNetwork(GameObject go)
         {
-            if (networkServerType == null)
+            if (cachedLocalPC == null || !Mirror.NetworkServer.active)
             {
-                // Mirror is loaded by the game and resolved without adding another package dependency
-                Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
-                foreach (Assembly assembly in assemblies)
-                {
-                    networkServerType = assembly.GetType("Mirror.NetworkServer");
-                    if (networkServerType != null)
-                    {
-                        break;
-                    }
-                }
+                return false;
             }
-            if (networkServerSpawnMethod == null && networkServerType != null)
+
+            if (go.GetComponent<Mirror.NetworkIdentity>() == null)
             {
-                MethodInfo[] methods = networkServerType.GetMethods(BindingFlags.Static | BindingFlags.Public);
-                foreach (MethodInfo methodInfo in methods)
-                {
-                    if (methodInfo.Name == "Spawn")
-                    {
-                        // Select the overload whose first argument is the spawned GameObject
-                        ParameterInfo[] parameters = methodInfo.GetParameters();
-                        if (parameters.Length >= 1 && parameters[0].ParameterType == typeof(GameObject))
-                        {
-                            networkServerSpawnMethod = methodInfo;
-                            break;
-                        }
-                    }
-                }
+                // Mirror cannot register a prefab clone that has no network identity
+                return false;
             }
-            if (networkServerSpawnMethod != null)
+
+            try
             {
-                if (networkServerSpawnMethod.GetParameters().Length == 1)
-                {
-                    networkServerSpawnMethod.Invoke(null, new object[1] { go });
-                }
-                else if (cachedLocalPC != null)
-                {
-                    networkServerSpawnMethod.Invoke(null, new object[2] { go, cachedLocalPC.gameObject });
-                }
+                // This overload assigns ownership to the host player and is stable in the shipped Mirror build
+                Mirror.NetworkServer.Spawn(go, cachedLocalPC.gameObject);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ModMenuLoader.Log("Network spawn error: " + ex.Message);
+                return false;
             }
         }
 
