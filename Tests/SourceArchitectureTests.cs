@@ -255,6 +255,8 @@ public sealed class SourceArchitectureTests
         Assert.Contains("profile.isLocalPlayer", visibility, StringComparison.Ordinal);
         Assert.Contains("CmdSetVisibility", visibility, StringComparison.Ordinal);
         Assert.Contains("RestoreVisibilityAfterSelectionChange", visibility, StringComparison.Ordinal);
+        Assert.Contains("force: true", visibility, StringComparison.Ordinal);
+        Assert.Contains("private static bool SetLocalPlayerVisibility", visibility, StringComparison.Ordinal);
         Assert.DoesNotContain("ToggleVisibility()", visibility, StringComparison.Ordinal);
     }
 
@@ -270,7 +272,9 @@ public sealed class SourceArchitectureTests
         Assert.Contains("TryNormalizeIpAddress", playerConnection, StringComparison.Ordinal);
         Assert.Contains("\"IP Address\"", playerConnection, StringComparison.Ordinal);
         Assert.Contains("\"Steam relay (IP hidden)\"", playerConnection, StringComparison.Ordinal);
-        Assert.Contains("\"Local process (no remote IP)\"", playerConnection, StringComparison.Ordinal);
+        Assert.Contains("Mirror.NetworkManager.singleton.networkAddress", playerConnection, StringComparison.Ordinal);
+        Assert.Contains("\"Local host process (no remote IP)\"", playerConnection, StringComparison.Ordinal);
+        Assert.Contains("\"Server connection unavailable\"", playerConnection, StringComparison.Ordinal);
         Assert.Contains("return isHost ? \"Remote client\" : \"Remote player\"", playerConnection, StringComparison.Ordinal);
         Assert.DoesNotContain("return \"localhost\"", playerConnection, StringComparison.Ordinal);
     }
@@ -375,7 +379,7 @@ public sealed class SourceArchitectureTests
         string state = File.ReadAllText(Path.Combine(ProjectRoot, "ModMenu", "PlayerProtectionState.cs"));
 
         Assert.Contains("UpdatePlayerProtectionRecovery();", behaviour, StringComparison.Ordinal);
-        Assert.Contains("ReapplyPlayerGrabProtections(isHost)", behaviour, StringComparison.Ordinal);
+        Assert.Contains("ReapplyPlayerGrabProtections()", behaviour, StringComparison.Ordinal);
         Assert.Contains("ReapplyProtectedPlayers(organManager)", behaviour, StringComparison.Ordinal);
         Assert.Contains("HasAnyProtection", state, StringComparison.Ordinal);
     }
@@ -407,8 +411,8 @@ public sealed class SourceArchitectureTests
             patches,
             StringComparison.Ordinal);
         Assert.Contains("!PlayerProtectionState.IsNoHit(__instance)", patches, StringComparison.Ordinal);
-        Assert.Contains("NoHitSteamIds.IntersectWith(connectedSteamIds)", state, StringComparison.Ordinal);
         Assert.Contains("NoHitSteamIds.Clear()", state, StringComparison.Ordinal);
+        Assert.DoesNotContain("NoHitSteamIds.IntersectWith", state, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -441,23 +445,24 @@ public sealed class SourceArchitectureTests
         Assert.Contains("[HarmonyPatch(typeof(Item), \"ServerPickup\")]", patch, StringComparison.Ordinal);
         Assert.Contains("!PlayerProtectionState.IsNoGrab(playerCarry)", patch, StringComparison.Ordinal);
         Assert.Contains("holderInventory.ServerDropHoldingItem()", controls, StringComparison.Ordinal);
-        Assert.Contains("playerCarry.LocalSetInteractable(!isProtected)", controls, StringComparison.Ordinal);
+        Assert.Contains("bool canChange = playerCarry != null && hasStableIdentity && isHost", controls, StringComparison.Ordinal);
         Assert.Contains("NO GRAB ACTIVE", controls, StringComparison.Ordinal);
-        Assert.Contains("ReapplyPlayerGrabProtections(cachedGM != null && cachedGM.isServer)", File.ReadAllText(
+        Assert.Contains("ReapplyPlayerGrabProtections()", File.ReadAllText(
             Path.Combine(ProjectRoot, "ModMenu", "ModMenuBehaviour.cs")), StringComparison.Ordinal);
-        Assert.Contains("NoGrabSteamIds.IntersectWith(connectedSteamIds)", state, StringComparison.Ordinal);
+        Assert.DoesNotContain("LocalSetInteractable", controls, StringComparison.Ordinal);
+        Assert.DoesNotContain("NoGrabSteamIds.IntersectWith", state, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void SceneRecoveryDoesNotPruneProtectionDuringEmptyProfileWindow()
+    public void SceneRecoveryKeepsProtectionAcrossLateJoinAndReconnectWindows()
     {
         string behaviour = File.ReadAllText(Path.Combine(ProjectRoot, "ModMenu", "ModMenuBehaviour.cs"));
 
         Assert.Contains("if (profiles.Length == 0)", behaviour, StringComparison.Ordinal);
-        Assert.Contains("bool identitySnapshotComplete = true", behaviour, StringComparison.Ordinal);
         Assert.Contains("!profile.hasSynced || profile.steamId == 0uL", behaviour, StringComparison.Ordinal);
-        Assert.Contains("if (identitySnapshotComplete)", behaviour, StringComparison.Ordinal);
-        Assert.Contains("PlayerProtectionState.RetainConnectedPlayers(connectedSteamIds)", behaviour, StringComparison.Ordinal);
+        Assert.DoesNotContain("RetainConnectedPlayers", behaviour, StringComparison.Ordinal);
+        Assert.DoesNotContain("IntersectWith", File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "PlayerProtectionState.cs")), StringComparison.Ordinal);
     }
 
     [Fact]
