@@ -57,6 +57,8 @@ namespace ModMenu
 
         private float originalGravity = -1f;
 
+        private bool hasMovementBaseline;
+
         private bool flyHackEnabled;
 
         private KeyCode flyToggleKey;
@@ -74,6 +76,8 @@ namespace ModMenu
         private bool waitingForFlyDownKeybind;
 
         private bool wasFlying;
+
+        private bool wasKinematicBeforeFlying;
 
         private string moneyInputStr = "10000";
 
@@ -112,6 +116,9 @@ namespace ModMenu
         private float multiplierCooldown;
 
         private bool isInternalMoneyChange;
+
+        // Persistent protections poll slowly after the bounded scene recovery window
+        private float protectionRecoveryTimer;
 
         // Game speed stores the value that existed before the override began
         private bool gameSpeedEnabled;
@@ -241,14 +248,16 @@ namespace ModMenu
 
         private string dayInput = "1";
 
-        private ulong teleportTargetSteamId;
+        private int teleportTargetInstanceId;
 
         // Temporary effect sets drive toggle labels and are cleared with their scene objects
-        private readonly HashSet<ulong> frozenPlayerIds = new HashSet<ulong>();
+        private readonly HashSet<int> frozenPlayerIds = new HashSet<int>();
 
-        private readonly HashSet<ulong> headLockedPlayerIds = new HashSet<ulong>();
+        private readonly HashSet<int> headLockedPlayerIds = new HashSet<int>();
 
-        private ulong selectedPlayerSteamId;
+        private int selectedPlayerInstanceId;
+
+        private int visibilityModifiedPlayerInstanceId;
 
         private int playerInspectorMode;
 
@@ -257,10 +266,6 @@ namespace ModMenu
         private float themeButtonHeight = 27f;
 
         private float themeSectionHeight = 25f;
-
-        private Type? networkServerType;
-
-        private MethodInfo? networkServerSpawnMethod;
 
         private Type? itemStampManagerType;
 
@@ -406,6 +411,10 @@ namespace ModMenu
         // Clears scene-bound references and schedules a bounded state reapply
         private void OnGameSceneLoaded(Scene scene, LoadSceneMode mode)
         {
+            // PlayerSettings is a shared resource, so overrides must be removed before dropping the baseline
+            RestoreMovementOverrides();
+            RestoreFlightPhysics();
+
             // Every scene owns new network objects and reflected settings instances
             cachedLocalPC = null;
             cachedMM = null;
@@ -420,15 +429,16 @@ namespace ModMenu
             originalAcceleration = -1f;
             originalJumpForce = -1f;
             originalGravity = -1f;
+            hasMovementBaseline = false;
             wasFlying = false;
+            wasKinematicBeforeFlying = false;
             cachedSpawnables = null;
             cachedSpawnableSettings = null;
             cachedItemManager = null;
             itemStampManagerType = null;
-            networkServerType = null;
-            networkServerSpawnMethod = null;
             gmDumped = false;
             cacheTimer = 0f;
+            protectionRecoveryTimer = 0f;
 
             // Economy baselines from the previous manager must not modify a new lobby
             lastKnownBalance = -1L;
@@ -446,13 +456,17 @@ namespace ModMenu
             // Temporary labels belong to player and NPC objects destroyed with the scene
             frozenPlayerIds.Clear();
             headLockedPlayerIds.Clear();
-            selectedPlayerSteamId = 0uL;
-            teleportTargetSteamId = 0uL;
+            selectedPlayerInstanceId = 0;
+            visibilityModifiedPlayerInstanceId = 0;
+            teleportTargetInstanceId = 0;
             selectedNpcInstanceId = 0;
             if (npcFollowEnabled && npcFollowScope == 2)
             {
                 // Individual NPC objects have no stable identity after a scene rebuild
-                StopNpcFollow();
+                npcFollowScope = 1;
+                npcFollowInstanceId = 0;
+                npcFollowUpdateTimer = 2f;
+                npcFollowMissingTargetTime = 0f;
             }
             else if (npcFollowEnabled)
             {
@@ -510,10 +524,17 @@ namespace ModMenu
             }
 
             List<ulong> connectedSteamIds = new List<ulong>(profiles.Length);
+            bool identitySnapshotComplete = true;
             foreach (PlayerProfile profile in profiles)
             {
-                if (profile == null || profile.steamId == 0uL)
+                if (profile == null)
                 {
+                    continue;
+                }
+                if (!profile.hasSynced || profile.steamId == 0uL)
+                {
+                    // A partial Mirror snapshot cannot prove that an older Steam ID disconnected
+                    identitySnapshotComplete = false;
                     continue;
                 }
 
@@ -525,7 +546,41 @@ namespace ModMenu
             }
 
             // Lobby changes cannot leave protection attached to disconnected Steam IDs
-            PlayerProtectionState.RetainConnectedPlayers(connectedSteamIds);
+            if (identitySnapshotComplete)
+            {
+                PlayerProtectionState.RetainConnectedPlayers(connectedSteamIds);
+            }
+        }
+
+        // Reconciles persistent protections for players that register after scene recovery ends
+        private void UpdatePlayerProtectionRecovery()
+        {
+            if (!PlayerProtectionState.HasAnyProtection)
+            {
+                protectionRecoveryTimer = 0f;
+                return;
+            }
+
+            protectionRecoveryTimer -= Time.unscaledDeltaTime;
+            if (protectionRecoveryTimer > 0f)
+            {
+                return;
+            }
+
+            // A slow interval covers late joins without scanning every frame
+            protectionRecoveryTimer = 5f;
+            bool isHost = cachedGM != null && cachedGM.isServer;
+            ReapplyPlayerGrabProtections(isHost);
+            if (!isHost)
+            {
+                return;
+            }
+
+            OrganManager? organManager = UnityEngine.Object.FindFirstObjectByType<OrganManager>();
+            if (organManager != null)
+            {
+                ReapplyProtectedPlayers(organManager);
+            }
         }
 
         // Applies game-speed changes only on transitions so normal pauses remain intact
@@ -581,6 +636,15 @@ namespace ModMenu
             }
             ApplyMovementHacks();
             FlyUpdate();
+            UpdatePlayerProtectionRecovery();
+            bool hasEconomyAuthority = cachedGM != null && cachedGM.isServer;
+            if (!hasEconomyAuthority)
+            {
+                // Host-owned toggles cannot remain armed after authority changes
+                noMoneySpendEnabled = false;
+                noTicketSpendEnabled = false;
+                moneyMultiplierEnabled = false;
+            }
             if (noMoneySpendEnabled)
             {
                 NoMoneySpendUpdate();
@@ -594,7 +658,10 @@ namespace ModMenu
                 MoneyMultiplierUpdate();
             }
             UpdateGameSpeed();
-            UpdateNpcFollow();
+            if (pauseDayTimer && !hasEconomyAuthority)
+            {
+                pauseDayTimer = false;
+            }
             if (pauseDayTimer && cachedGM != null && cachedGM.isServer)
             {
                 // Avoid dirtying the SyncVar every frame when the value already matches
@@ -608,6 +675,9 @@ namespace ModMenu
         // Keeps gameplay input and cursor ownership aligned with the visible menu
         private void LateUpdate()
         {
+            // NPC behavior runs during Update, so persistent destinations are applied afterward
+            UpdateNpcFollow();
+
             IsMenuOpen = showMenu;
             if (!showMenu)
             {
@@ -632,6 +702,9 @@ namespace ModMenu
         {
             IsMenuOpen = false;
             SceneManager.sceneLoaded -= OnGameSceneLoaded;
+            RestoreMovementOverrides();
+            RestoreFlightPhysics();
+            RestoreMenuVisibility();
             if (sceneRecoveryCoroutine != null)
             {
                 StopCoroutine(sceneRecoveryCoroutine);
