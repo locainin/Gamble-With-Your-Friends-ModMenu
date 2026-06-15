@@ -33,7 +33,7 @@ namespace ModMenu
             }
             GUILayout.EndHorizontal();
 
-            if (GUILayout.Button("Reset All Temporary Effects"))
+            if (GUILayout.Button("Reset All Physical Effects"))
             {
                 ResetAllPlayerEffects();
             }
@@ -101,11 +101,11 @@ namespace ModMenu
                 }
 
                 playerController.ServerWakeUp();
-                frozenPlayerIds.Remove(profile!.steamId);
+                frozenPlayerIds.Remove(profile!.GetInstanceID());
             }
         }
 
-        // Clears all temporary menu effects from connected players
+        // Clears physical menu effects while game-managed buffs keep their normal expiry
         private void ResetAllPlayerEffects()
         {
             PlayerProfile[] profiles = UnityEngine.Object.FindObjectsByType<PlayerProfile>(FindObjectsSortMode.None);

@@ -75,9 +75,10 @@ namespace ModMenu
             {
                 if (cachedGM.isServer)
                 {
-                    cachedGM.Network_timer -= seconds;
+                    // The game stores elapsed time, so adding remaining time uses a negative delta
+                    cachedGM.ServerAdjustTimer(0f - seconds);
                     ModMenuLoader.Log(string.Format(CultureInfo.InvariantCulture, "{0} {1}s!", (seconds > 0f) ? "Added" : "Subtracted", Mathf.Abs(seconds)));
-                    ModMenuLoader.Log($"Timer modified by {seconds}s. New timer: {cachedGM.Network_timer}");
+                    ModMenuLoader.Log($"Remaining day time modified by {seconds}s. Elapsed timer: {cachedGM.Network_timer}");
                 }
                 else
                 {
