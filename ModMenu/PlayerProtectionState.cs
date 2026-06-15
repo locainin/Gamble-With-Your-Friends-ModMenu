@@ -10,10 +10,18 @@ namespace ModMenu
 
         private static readonly HashSet<ulong> NoGrabSteamIds = new HashSet<ulong>();
 
+        private static readonly HashSet<ulong> NoHitSteamIds = new HashSet<ulong>();
+
         // Harmony remains alive for the plugin lifetime so patches remain registered
         private static readonly Harmony HarmonyInstance = new Harmony("com.casinomenu.gamblewithfriends.organprotection");
 
         private static bool isPatched;
+
+        // Recovery polling sleeps completely when no player has a persistent protection
+        internal static bool HasAnyProtection =>
+            ProtectedSteamIds.Count > 0 ||
+            NoGrabSteamIds.Count > 0 ||
+            NoHitSteamIds.Count > 0;
 
         // Installs organ protection Harmony patches once
         internal static void EnsurePatched()
@@ -66,6 +74,41 @@ namespace ModMenu
             return playerProfile != null && IsProtected(playerProfile.steamId);
         }
 
+        // Adds or removes one Steam ID from physical hit protection
+        internal static void SetNoHit(ulong steamId, bool isProtected)
+        {
+            if (steamId == 0uL)
+            {
+                return;
+            }
+
+            if (isProtected)
+            {
+                NoHitSteamIds.Add(steamId);
+                return;
+            }
+
+            NoHitSteamIds.Remove(steamId);
+        }
+
+        // Checks whether a Steam ID rejects server knockback
+        internal static bool IsNoHit(ulong steamId)
+        {
+            return steamId != 0uL && NoHitSteamIds.Contains(steamId);
+        }
+
+        // Checks whether one player controller rejects server knockback
+        internal static bool IsNoHit(PlayerController playerController)
+        {
+            if (playerController == null)
+            {
+                return false;
+            }
+
+            PlayerProfile playerProfile = playerController.GetComponent<PlayerProfile>();
+            return playerProfile != null && IsNoHit(playerProfile.steamId);
+        }
+
         // Adds or removes one Steam ID from pickup protection
         internal static void SetNoGrab(ulong steamId, bool isProtected)
         {
@@ -106,6 +149,7 @@ namespace ModMenu
         {
             ProtectedSteamIds.IntersectWith(connectedSteamIds);
             NoGrabSteamIds.IntersectWith(connectedSteamIds);
+            NoHitSteamIds.IntersectWith(connectedSteamIds);
         }
 
         // Clears session-owned protection when no lobby identity remains valid
@@ -113,6 +157,7 @@ namespace ModMenu
         {
             ProtectedSteamIds.Clear();
             NoGrabSteamIds.Clear();
+            NoHitSteamIds.Clear();
         }
 
         // Normalizes organ data to a fully healthy state

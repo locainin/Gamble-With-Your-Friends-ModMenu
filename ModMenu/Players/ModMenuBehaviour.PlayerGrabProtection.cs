@@ -15,7 +15,10 @@ namespace ModMenu
             DrawSection("Pickup Protection");
 
             PlayerCarry playerCarry = playerProfile.GetComponent<PlayerCarry>();
-            bool canChange = playerCarry != null && (isHost || playerProfile.isLocalPlayer);
+            bool hasStableIdentity = playerProfile.hasSynced && playerProfile.steamId != 0uL;
+            bool canChange = playerCarry != null &&
+                hasStableIdentity &&
+                (isHost || playerProfile.isLocalPlayer);
             bool wasEnabled = GUI.enabled;
             GUI.enabled = wasEnabled && canChange;
 
@@ -32,7 +35,10 @@ namespace ModMenu
             GUI.enabled = wasEnabled;
             if (!canChange)
             {
-                GUILayout.Label("  Host authority or local ownership is required", smallLabelStyle);
+                string reason = !hasStableIdentity
+                    ? "  Waiting for Steam identity synchronization"
+                    : "  Host authority or local ownership is required";
+                GUILayout.Label(reason, smallLabelStyle);
             }
         }
 

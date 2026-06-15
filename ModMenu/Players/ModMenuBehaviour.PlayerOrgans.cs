@@ -43,6 +43,9 @@ namespace ModMenu
             }
 
             DrawSection("Protection");
+            bool hasStableIdentity = playerProfile.hasSynced && playerProfile.steamId != 0uL;
+            bool previousEnabled = GUI.enabled;
+            GUI.enabled = previousEnabled && hasStableIdentity;
             bool isProtected = PlayerProtectionState.IsProtected(playerProfile.steamId);
             bool requestedProtection = GUILayout.Toggle(isProtected, isProtected ? " GOD MODE ACTIVE" : " Enable God Mode");
             if (requestedProtection != isProtected)
@@ -53,6 +56,21 @@ namespace ModMenu
                 {
                     SetPlayerOrgans(playerOrgans, true, true, true, true);
                 }
+            }
+
+            bool takesNoHits = PlayerProtectionState.IsNoHit(playerProfile.steamId);
+            bool requestedNoHits = GUILayout.Toggle(
+                takesNoHits,
+                takesNoHits ? " TAKE NO HITS ACTIVE" : " Enable Take No Hits");
+            if (requestedNoHits != takesNoHits)
+            {
+                // Hit protection blocks server knockback without changing organ rules
+                PlayerProtectionState.SetNoHit(playerProfile.steamId, requestedNoHits);
+            }
+            GUI.enabled = previousEnabled;
+            if (!hasStableIdentity)
+            {
+                GUILayout.Label("  Waiting for Steam identity synchronization", smallLabelStyle);
             }
 
             DrawSection("Actions");

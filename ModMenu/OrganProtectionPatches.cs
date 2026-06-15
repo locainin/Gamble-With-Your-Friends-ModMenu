@@ -2,6 +2,16 @@ using HarmonyLib;
 
 namespace ModMenu
 {
+    [HarmonyPatch(typeof(PlayerController), nameof(PlayerController.ServerKnockback))]
+    internal static class PlayerControllerServerKnockbackPatch
+    {
+        // Stops physical hit reactions before held items are dropped or ragdoll starts
+        private static bool Prefix(PlayerController __instance)
+        {
+            return !PlayerProtectionState.IsNoHit(__instance);
+        }
+    }
+
     [HarmonyPatch(typeof(OrganManager), nameof(OrganManager.ServerToggleOrgan))]
     internal static class OrganManagerServerToggleOrganPatch
     {
