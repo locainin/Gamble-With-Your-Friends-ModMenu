@@ -23,15 +23,16 @@ namespace ModMenu
             }
 
             DrawSection("Physical Effects");
+            int playerInstanceId = playerProfile.GetInstanceID();
             // These call the game's server methods so the target client receives normal TargetRpc updates
-            bool isFrozen = frozenPlayerIds.Contains(playerProfile.steamId);
-            bool isHeadLocked = headLockedPlayerIds.Contains(playerProfile.steamId);
+            bool isFrozen = frozenPlayerIds.Contains(playerInstanceId);
+            bool isHeadLocked = headLockedPlayerIds.Contains(playerInstanceId);
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Wake"))
             {
                 // Wake also clears the menu's requested freeze state for this player
                 playerController.ServerWakeUp();
-                frozenPlayerIds.Remove(playerProfile.steamId);
+                frozenPlayerIds.Remove(playerInstanceId);
             }
             if (GUILayout.Button(isFrozen ? "Unfreeze" : "Freeze"))
             {
@@ -40,11 +41,11 @@ namespace ModMenu
                 playerController.ServerLock(shouldFreeze);
                 if (shouldFreeze)
                 {
-                    frozenPlayerIds.Add(playerProfile.steamId);
+                    frozenPlayerIds.Add(playerInstanceId);
                 }
                 else
                 {
-                    frozenPlayerIds.Remove(playerProfile.steamId);
+                    frozenPlayerIds.Remove(playerInstanceId);
                 }
             }
             GUILayout.EndHorizontal();
@@ -57,11 +58,11 @@ namespace ModMenu
                 playerController.ServerLockHead(shouldLockHead);
                 if (shouldLockHead)
                 {
-                    headLockedPlayerIds.Add(playerProfile.steamId);
+                    headLockedPlayerIds.Add(playerInstanceId);
                 }
                 else
                 {
-                    headLockedPlayerIds.Remove(playerProfile.steamId);
+                    headLockedPlayerIds.Remove(playerInstanceId);
                 }
             }
             if (GUILayout.Button("Spin View"))
@@ -108,7 +109,7 @@ namespace ModMenu
             {
                 SetPlayerEnergy(playerController, 100f);
             }
-            if (GUILayout.Button("Reset Effects"))
+            if (GUILayout.Button("Reset Physical Effects"))
             {
                 ResetPlayerEffects(playerProfile, playerController);
             }
@@ -170,7 +171,7 @@ namespace ModMenu
             }
         }
 
-        // Clears temporary menu effects from one player
+        // Clears physical menu effects while game-managed buffs keep their normal expiry
         private void ResetPlayerEffects(PlayerProfile playerProfile, PlayerController playerController)
         {
             if (playerProfile == null || playerController == null || cachedGM == null || !cachedGM.isServer)
@@ -185,8 +186,8 @@ namespace ModMenu
             SetPlayerEnergy(playerController, 100f);
 
             // Remove local state markers so button labels immediately return to their defaults
-            frozenPlayerIds.Remove(playerProfile.steamId);
-            headLockedPlayerIds.Remove(playerProfile.steamId);
+            frozenPlayerIds.Remove(playerProfile.GetInstanceID());
+            headLockedPlayerIds.Remove(playerProfile.GetInstanceID());
 
         }
 

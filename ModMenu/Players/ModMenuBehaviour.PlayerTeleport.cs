@@ -18,9 +18,10 @@ namespace ModMenu
             PlayerProfile? localProfile = GetLocalPlayerProfile();
             PlayerController? localPlayer = localProfile != null ? localProfile.GetComponent<PlayerController>() : cachedLocalPC;
             bool selectedIsLocal = selectedProfile.isLocalPlayer;
+            bool previousEnabled = GUI.enabled;
 
             // Quick actions cover the common host-to-player workflow
-            GUI.enabled = selectedPlayer != null && localPlayer != null && !selectedIsLocal;
+            GUI.enabled = previousEnabled && selectedPlayer != null && localPlayer != null && !selectedIsLocal;
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Bring To Me") && selectedPlayer != null && localPlayer != null)
             {
@@ -31,7 +32,7 @@ namespace ModMenu
                 TeleportPlayerTo(localPlayer, selectedPlayer);
             }
             GUILayout.EndHorizontal();
-            GUI.enabled = true;
+            GUI.enabled = previousEnabled;
 
             DrawSection("Player To Player");
             if (profiles.Length < 2)
@@ -40,12 +41,12 @@ namespace ModMenu
                 return;
             }
 
-            EnsureTeleportTarget(profiles, selectedProfile.steamId);
+            EnsureTeleportTarget(profiles, selectedProfile.GetInstanceID());
             GUILayout.Label("  Destination", smallLabelStyle);
             GUILayout.BeginHorizontal();
             foreach (PlayerProfile targetProfile in profiles)
             {
-                if (targetProfile == null || targetProfile.steamId == selectedProfile.steamId)
+                if (targetProfile == null || targetProfile.GetInstanceID() == selectedProfile.GetInstanceID())
                 {
                     continue;
                 }
@@ -54,8 +55,11 @@ namespace ModMenu
             }
             GUILayout.EndHorizontal();
 
-            PlayerController? targetPlayer = FindPlayerControllerBySteamId(profiles, teleportTargetSteamId);
-            GUI.enabled = selectedPlayer != null && targetPlayer != null && selectedPlayer != targetPlayer;
+            PlayerProfile? targetProfileSelection = FindPlayerProfileByInstanceId(profiles, teleportTargetInstanceId);
+            PlayerController? targetPlayer = targetProfileSelection != null
+                ? targetProfileSelection.GetComponent<PlayerController>()
+                : null;
+            GUI.enabled = previousEnabled && selectedPlayer != null && targetPlayer != null && selectedPlayer != targetPlayer;
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Move Selected") && selectedPlayer != null && targetPlayer != null)
             {
@@ -66,39 +70,39 @@ namespace ModMenu
                 SwapPlayers(selectedPlayer, targetPlayer);
             }
             GUILayout.EndHorizontal();
-            GUI.enabled = true;
+            GUI.enabled = previousEnabled;
         }
 
         // Selects a valid destination distinct from the inspected player
-        private void EnsureTeleportTarget(PlayerProfile[] profiles, ulong selectedSteamId)
+        private void EnsureTeleportTarget(PlayerProfile[] profiles, int selectedInstanceId)
         {
-            PlayerProfile? currentTarget = FindPlayerProfileBySteamId(profiles, teleportTargetSteamId);
-            if (currentTarget != null && currentTarget.steamId != selectedSteamId)
+            PlayerProfile? currentTarget = FindPlayerProfileByInstanceId(profiles, teleportTargetInstanceId);
+            if (currentTarget != null && currentTarget.GetInstanceID() != selectedInstanceId)
             {
                 return;
             }
 
             foreach (PlayerProfile profile in profiles)
             {
-                if (profile != null && profile.steamId != selectedSteamId)
+                if (profile != null && profile.GetInstanceID() != selectedInstanceId)
                 {
-                    teleportTargetSteamId = profile.steamId;
+                    teleportTargetInstanceId = profile.GetInstanceID();
                     return;
                 }
             }
 
-            teleportTargetSteamId = 0uL;
+            teleportTargetInstanceId = 0;
         }
 
         // Renders one destination in the selected-player workflow
         private void DrawTeleportTargetButton(PlayerProfile playerProfile)
         {
-            bool isSelected = teleportTargetSteamId == playerProfile.steamId;
+            bool isSelected = teleportTargetInstanceId == playerProfile.GetInstanceID();
             string playerName = string.IsNullOrEmpty(playerProfile.playerName) ? "Unknown" : playerProfile.playerName;
             GUIStyle targetStyle = isSelected ? activeTabStyle : GUI.skin.button;
             if (GUILayout.Button(playerName, targetStyle, GUILayout.Height(28f)))
             {
-                teleportTargetSteamId = playerProfile.steamId;
+                teleportTargetInstanceId = playerProfile.GetInstanceID();
             }
         }
 
