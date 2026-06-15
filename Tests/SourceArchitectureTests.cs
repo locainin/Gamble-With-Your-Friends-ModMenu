@@ -15,11 +15,13 @@ public sealed class SourceArchitectureTests
         Assert.False(File.Exists(Path.Combine(modRoot, "ModMenuBehaviour.Items.cs")));
 
         Assert.True(File.Exists(Path.Combine(modRoot, "Players", "ModMenuBehaviour.PlayerList.cs")));
+        Assert.True(File.Exists(Path.Combine(modRoot, "Players", "ModMenuBehaviour.PlayerConnection.cs")));
         Assert.True(File.Exists(Path.Combine(modRoot, "Players", "ModMenuBehaviour.PlayerTeleport.cs")));
         Assert.True(File.Exists(Path.Combine(modRoot, "Players", "ModMenuBehaviour.PlayerOrgans.cs")));
         Assert.True(File.Exists(Path.Combine(modRoot, "Players", "ModMenuBehaviour.PlayerActions.cs")));
         Assert.True(File.Exists(Path.Combine(modRoot, "Players", "ModMenuBehaviour.PlayerNpcFollow.cs")));
         Assert.True(File.Exists(Path.Combine(modRoot, "Players", "ModMenuBehaviour.PlayerMovement.cs")));
+        Assert.True(File.Exists(Path.Combine(modRoot, "Players", "ModMenuBehaviour.PlayerVisibility.cs")));
         Assert.True(File.Exists(Path.Combine(modRoot, "Players", "ModMenuBehaviour.PlayerGrabProtection.cs")));
         Assert.True(File.Exists(Path.Combine(modRoot, "Players", "PlayerCarryProtectionPatches.cs")));
         Assert.True(File.Exists(Path.Combine(modRoot, "Items", "ModMenuBehaviour.ItemDiscovery.cs")));
@@ -122,14 +124,65 @@ public sealed class SourceArchitectureTests
             Path.Combine(ProjectRoot, "ModMenu", "World", "ModMenuBehaviour.NpcFollow.cs"));
         string playerFollow = File.ReadAllText(
             Path.Combine(ProjectRoot, "ModMenu", "Players", "ModMenuBehaviour.PlayerNpcFollow.cs"));
+        string behaviour = File.ReadAllText(Path.Combine(ProjectRoot, "ModMenu", "ModMenuBehaviour.cs"));
 
         Assert.Contains("NpcFollowInterval", npcFollow, StringComparison.Ordinal);
         Assert.Contains("UpdateNpcFollow", npcFollow, StringComparison.Ordinal);
         Assert.Contains("StopNpcFollow", npcFollow, StringComparison.Ordinal);
         Assert.Contains("NpcFollowTargetGracePeriod", npcFollow, StringComparison.Ordinal);
         Assert.Contains("npcFollowMissingTargetTime", npcFollow, StringComparison.Ordinal);
+        Assert.Contains("targetProfile.hasSynced", npcFollow, StringComparison.Ordinal);
+        Assert.Contains("npcFollowScope = 1", npcFollow, StringComparison.Ordinal);
+        Assert.Contains("npc.State = NPC.NPCState.Free", npcFollow, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "if (targets.Length == 0)\n            {\n                StopNpcFollow();",
+            npcFollow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "private void LateUpdate()\n        {\n            // NPC behavior runs during Update",
+            behaviour,
+            StringComparison.Ordinal);
+        Assert.Contains("npcFollowScope = 1", behaviour, StringComparison.Ordinal);
         Assert.Contains("Stop Following This Player", playerFollow, StringComparison.Ordinal);
         Assert.Contains("StartNpcFollowForPlayer(profile)", playerFollow, StringComparison.Ordinal);
+        Assert.Contains("hasStableIdentity", playerFollow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DayTimerUsesTheServerAdjustmentApiWithRemainingTimeSemantics()
+    {
+        string host = File.ReadAllText(Path.Combine(ProjectRoot, "ModMenu", "ModMenuBehaviour.Host.cs"));
+
+        Assert.Contains("cachedGM.ServerAdjustTimer(0f - seconds)", host, StringComparison.Ordinal);
+        Assert.DoesNotContain("cachedGM.Network_timer -= seconds", host, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NestedControlsRestoreTheirInheritedGuiState()
+    {
+        string gui = File.ReadAllText(Path.Combine(ProjectRoot, "ModMenu", "ModMenuBehaviour.Gui.cs"));
+        string movement = File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "Players", "ModMenuBehaviour.PlayerMovement.cs"));
+        string teleport = File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "Players", "ModMenuBehaviour.PlayerTeleport.cs"));
+
+        Assert.Contains("GUI.enabled = previousEnabled && !isSelected", gui, StringComparison.Ordinal);
+        Assert.Contains("GUI.enabled = previousEnabled && canEditMovement", movement, StringComparison.Ordinal);
+        Assert.Contains("GUI.enabled = previousEnabled && selectedPlayer != null", teleport, StringComparison.Ordinal);
+        Assert.DoesNotContain("GUI.enabled = true;", movement, StringComparison.Ordinal);
+        Assert.DoesNotContain("GUI.enabled = true;", teleport, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PlayerTeleportUsesSceneStableProfileInstances()
+    {
+        string behaviour = File.ReadAllText(Path.Combine(ProjectRoot, "ModMenu", "ModMenuBehaviour.cs"));
+        string teleport = File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "Players", "ModMenuBehaviour.PlayerTeleport.cs"));
+
+        Assert.Contains("private int teleportTargetInstanceId", behaviour, StringComparison.Ordinal);
+        Assert.Contains("FindPlayerProfileByInstanceId(profiles, teleportTargetInstanceId)", teleport, StringComparison.Ordinal);
+        Assert.Contains("playerProfile.GetInstanceID()", teleport, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -195,23 +248,167 @@ public sealed class SourceArchitectureTests
     {
         string playerList = File.ReadAllText(
             Path.Combine(ProjectRoot, "ModMenu", "Players", "ModMenuBehaviour.PlayerList.cs"));
+        string visibility = File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "Players", "ModMenuBehaviour.PlayerVisibility.cs"));
 
-        Assert.Contains("profile.isLocalPlayer", playerList, StringComparison.Ordinal);
-        Assert.Contains("visibility!.ToggleVisibility()", playerList, StringComparison.Ordinal);
-        Assert.Contains("Make Invisible", playerList, StringComparison.Ordinal);
+        Assert.Contains("selectedPlayerInstanceId", playerList, StringComparison.Ordinal);
+        Assert.Contains("profile.isLocalPlayer", visibility, StringComparison.Ordinal);
+        Assert.Contains("CmdSetVisibility", visibility, StringComparison.Ordinal);
+        Assert.Contains("RestoreVisibilityAfterSelectionChange", visibility, StringComparison.Ordinal);
+        Assert.DoesNotContain("ToggleVisibility()", visibility, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void ManualMoneyChangesUpdatePlayerProfitWhileRefundsDoNot()
+    public void PlayerConnectionOverviewDoesNotPresentSteamPeersAsIpAddresses()
+    {
+        string playerList = File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "Players", "ModMenuBehaviour.PlayerList.cs"));
+        string playerConnection = File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "Players", "ModMenuBehaviour.PlayerConnection.cs"));
+
+        Assert.Contains("GetPlayerAuthorityLabel(profile, isHost)", playerList, StringComparison.Ordinal);
+        Assert.Contains("TryNormalizeIpAddress", playerConnection, StringComparison.Ordinal);
+        Assert.Contains("\"IP Address\"", playerConnection, StringComparison.Ordinal);
+        Assert.Contains("\"Steam relay (IP hidden)\"", playerConnection, StringComparison.Ordinal);
+        Assert.Contains("\"Local process (no remote IP)\"", playerConnection, StringComparison.Ordinal);
+        Assert.Contains("return isHost ? \"Remote client\" : \"Remote player\"", playerConnection, StringComparison.Ordinal);
+        Assert.DoesNotContain("return \"localhost\"", playerConnection, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SteamIdentityLookupsRejectUnsynchronizedZeroIds()
+    {
+        string playerList = File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "Players", "ModMenuBehaviour.PlayerList.cs"));
+        string npcFollow = File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "World", "ModMenuBehaviour.NpcFollow.cs"));
+
+        Assert.Contains("if (steamId == 0uL)", playerList, StringComparison.Ordinal);
+        Assert.Contains("profile.hasSynced && profile.steamId == steamId", playerList, StringComparison.Ordinal);
+        Assert.Contains("if (steamId == 0uL)", npcFollow, StringComparison.Ordinal);
+        Assert.Contains("profile.hasSynced && profile.steamId == steamId", npcFollow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SceneLocalPlayerEffectsUseInstanceIdsInsteadOfUnsyncedSteamIds()
+    {
+        string behaviour = File.ReadAllText(Path.Combine(ProjectRoot, "ModMenu", "ModMenuBehaviour.cs"));
+        string actions = File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "Players", "ModMenuBehaviour.PlayerActions.cs"));
+
+        Assert.Contains("HashSet<int> frozenPlayerIds", behaviour, StringComparison.Ordinal);
+        Assert.Contains("HashSet<int> headLockedPlayerIds", behaviour, StringComparison.Ordinal);
+        Assert.Contains("int playerInstanceId = playerProfile.GetInstanceID()", actions, StringComparison.Ordinal);
+        Assert.DoesNotContain("frozenPlayerIds.Contains(playerProfile.steamId)", actions, StringComparison.Ordinal);
+        Assert.DoesNotContain("headLockedPlayerIds.Contains(playerProfile.steamId)", actions, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PersistentProtectionWaitsForSynchronizedSteamIdentity()
+    {
+        string organs = File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "Players", "ModMenuBehaviour.PlayerOrgans.cs"));
+        string grab = File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "Players", "ModMenuBehaviour.PlayerGrabProtection.cs"));
+
+        Assert.Contains("playerProfile.hasSynced && playerProfile.steamId != 0uL", organs, StringComparison.Ordinal);
+        Assert.Contains("playerProfile.hasSynced && playerProfile.steamId != 0uL", grab, StringComparison.Ordinal);
+        Assert.Contains("Waiting for Steam identity synchronization", organs, StringComparison.Ordinal);
+        Assert.Contains("Waiting for Steam identity synchronization", grab, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ManualMoneyChangesUseSignedAccountingAndUpdateShowcaseHistory()
     {
         string currency = File.ReadAllText(Path.Combine(ProjectRoot, "ModMenu", "ModMenuBehaviour.Currency.cs"));
         string cache = File.ReadAllText(Path.Combine(ProjectRoot, "ModMenu", "ModMenuBehaviour.Cache.cs"));
 
-        Assert.Contains("CallAddBalance(amount, countTowardPlayerProfit: true)", currency, StringComparison.Ordinal);
-        Assert.Contains("CallRemoveBalance(amount, countTowardPlayerProfit: true)", currency, StringComparison.Ordinal);
+        Assert.Contains("CallChangeBalance(amount, countTowardPlayerProfit: true)", currency, StringComparison.Ordinal);
+        Assert.Contains("CallChangeBalance(-removableAmount, countTowardPlayerProfit: true)", currency, StringComparison.Ordinal);
         Assert.Contains("CallAddBalance(num, countTowardPlayerProfit: false)", currency, StringComparison.Ordinal);
+        Assert.Contains("moneyManager.TryChangeBalance(signedAmount", currency, StringComparison.Ordinal);
+        Assert.Contains("RecordShowcaseBalanceChange(amount)", currency, StringComparison.Ordinal);
+        Assert.Contains("RecordShowcaseBalanceChange(-removableAmount)", currency, StringComparison.Ordinal);
+        Assert.Contains("GameResultsManager? resultsManager", currency, StringComparison.Ordinal);
+        Assert.Contains("resultsManager.RegisterResult(", currency, StringComparison.Ordinal);
+        Assert.Contains("long bet = signedAmount < 0 ? -signedAmount : 0L", currency, StringComparison.Ordinal);
+        Assert.Contains("long payout = signedAmount > 0 ? signedAmount : 0L", currency, StringComparison.Ordinal);
+        Assert.DoesNotContain("PayoutRecord record = new PayoutRecord", currency, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetMethod(\"RemoveBalance\"", currency, StringComparison.Ordinal);
+        Assert.DoesNotContain("CmdTryChangeBalance", currency, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetField(\"balance\"", currency, StringComparison.Ordinal);
+        Assert.Contains("HasEconomyAuthority()", currency, StringComparison.Ordinal);
+        Assert.Contains("moneyManager.TryChangeTicketBalance(amount)", currency, StringComparison.Ordinal);
+        Assert.DoesNotContain("CmdTryChangeTicketBalance", currency, StringComparison.Ordinal);
         Assert.Contains("names[j] == \"GameResult\"", cache, StringComparison.Ordinal);
         Assert.Contains("names[j] == \"Misc\"", cache, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GameplayHotkeysDoNotFireWhileTheMenuAcceptsInput()
+    {
+        string gui = File.ReadAllText(Path.Combine(ProjectRoot, "ModMenu", "ModMenuBehaviour.Gui.cs"));
+
+        Assert.Contains("!showMenu && flyToggleKey", gui, StringComparison.Ordinal);
+        Assert.Contains("!showMenu && triggerWinKey", gui, StringComparison.Ordinal);
+        Assert.Contains("!showMenu && addMoneyKey", gui, StringComparison.Ordinal);
+        Assert.Contains("!showMenu && removeMoneyKey", gui, StringComparison.Ordinal);
+        Assert.Contains("!showMenu && addTicketKey", gui, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CustomNoClipVerticalKeysReplaceTheirDefaults()
+    {
+        string movement = File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "ModMenuBehaviour.Movement.cs"));
+
+        Assert.Contains("if (IsKeyDown(flyUpKey))", movement, StringComparison.Ordinal);
+        Assert.Contains("if (IsKeyDown(flyDownKey))", movement, StringComparison.Ordinal);
+        Assert.DoesNotContain("|| IsKeyDown(KeyCode.Space)", movement, StringComparison.Ordinal);
+        Assert.DoesNotContain("|| IsKeyDown(KeyCode.LeftControl)", movement, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PersistentProtectionReconcilesPlayersThatJoinAfterSceneRecovery()
+    {
+        string behaviour = File.ReadAllText(Path.Combine(ProjectRoot, "ModMenu", "ModMenuBehaviour.cs"));
+        string state = File.ReadAllText(Path.Combine(ProjectRoot, "ModMenu", "PlayerProtectionState.cs"));
+
+        Assert.Contains("UpdatePlayerProtectionRecovery();", behaviour, StringComparison.Ordinal);
+        Assert.Contains("ReapplyPlayerGrabProtections(isHost)", behaviour, StringComparison.Ordinal);
+        Assert.Contains("ReapplyProtectedPlayers(organManager)", behaviour, StringComparison.Ordinal);
+        Assert.Contains("HasAnyProtection", state, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ItemSpawnFailureDestroysTheUnnetworkedClone()
+    {
+        string spawning = File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "Items", "ModMenuBehaviour.ItemSpawning.cs"));
+
+        Assert.Contains("if (!SpawnOnNetwork(gameObject2))", spawning, StringComparison.Ordinal);
+        Assert.Contains("UnityEngine.Object.Destroy(gameObject2)", spawning, StringComparison.Ordinal);
+        Assert.Contains("Mirror.NetworkServer.Spawn(go, cachedLocalPC.gameObject)", spawning, StringComparison.Ordinal);
+        Assert.Contains("go.GetComponent<Mirror.NetworkIdentity>() == null", spawning, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TakeNoHitsBlocksServerKnockbackIndependentlyFromOrganProtection()
+    {
+        string controls = File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "Players", "ModMenuBehaviour.PlayerOrgans.cs"));
+        string patches = File.ReadAllText(Path.Combine(ProjectRoot, "ModMenu", "OrganProtectionPatches.cs"));
+        string state = File.ReadAllText(Path.Combine(ProjectRoot, "ModMenu", "PlayerProtectionState.cs"));
+
+        Assert.Contains("Enable Take No Hits", controls, StringComparison.Ordinal);
+        Assert.Contains("PlayerProtectionState.SetNoHit", controls, StringComparison.Ordinal);
+        Assert.Contains(
+            "[HarmonyPatch(typeof(PlayerController), nameof(PlayerController.ServerKnockback))]",
+            patches,
+            StringComparison.Ordinal);
+        Assert.Contains("!PlayerProtectionState.IsNoHit(__instance)", patches, StringComparison.Ordinal);
+        Assert.Contains("NoHitSteamIds.IntersectWith(connectedSteamIds)", state, StringComparison.Ordinal);
+        Assert.Contains("NoHitSteamIds.Clear()", state, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -257,6 +454,9 @@ public sealed class SourceArchitectureTests
         string behaviour = File.ReadAllText(Path.Combine(ProjectRoot, "ModMenu", "ModMenuBehaviour.cs"));
 
         Assert.Contains("if (profiles.Length == 0)", behaviour, StringComparison.Ordinal);
+        Assert.Contains("bool identitySnapshotComplete = true", behaviour, StringComparison.Ordinal);
+        Assert.Contains("!profile.hasSynced || profile.steamId == 0uL", behaviour, StringComparison.Ordinal);
+        Assert.Contains("if (identitySnapshotComplete)", behaviour, StringComparison.Ordinal);
         Assert.Contains("PlayerProtectionState.RetainConnectedPlayers(connectedSteamIds)", behaviour, StringComparison.Ordinal);
     }
 
@@ -269,6 +469,25 @@ public sealed class SourceArchitectureTests
         Assert.Contains("lastKnownTicketBalance = -1L", behaviour, StringComparison.Ordinal);
         Assert.Contains("lastMultiplierBalance = -1L", behaviour, StringComparison.Ordinal);
         Assert.Contains("pauseDayTimer = false", behaviour, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SceneChangesRestoreSharedMovementSettingsBeforeDroppingBaselines()
+    {
+        string behaviour = File.ReadAllText(Path.Combine(ProjectRoot, "ModMenu", "ModMenuBehaviour.cs"));
+        string movement = File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "ModMenuBehaviour.Movement.cs"));
+
+        int restoreIndex = behaviour.IndexOf("RestoreMovementOverrides();", StringComparison.Ordinal);
+        int cacheResetIndex = behaviour.IndexOf("cachedPlayerSettings = null;", StringComparison.Ordinal);
+
+        Assert.True(restoreIndex >= 0);
+        Assert.True(cacheResetIndex > restoreIndex);
+        Assert.Contains("fJumpForce.SetValue(cachedPlayerSettings, originalJumpForce)", movement, StringComparison.Ordinal);
+        Assert.Contains("hasMovementBaseline", movement, StringComparison.Ordinal);
+        Assert.Contains("RestoreFlightPhysics", behaviour, StringComparison.Ordinal);
+        Assert.Contains("wasKinematicBeforeFlying = rigidbody.isKinematic", movement, StringComparison.Ordinal);
+        Assert.Contains("rigidbody.isKinematic = wasKinematicBeforeFlying", movement, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <Compile Include="../ModMenu/DayProgressionPolicy.cs" Link="DayProgressionPolicy.cs" />
+    <Compile Include="../ModMenu/CurrencyPolicy.cs" Link="CurrencyPolicy.cs" />
     <Compile Include="../ModMenu/FrameRatePolicy.cs" Link="FrameRatePolicy.cs" />
     <Compile Include="../ModMenu/VersionPolicy.cs" Link="VersionPolicy.cs" />
   </ItemGroup>
