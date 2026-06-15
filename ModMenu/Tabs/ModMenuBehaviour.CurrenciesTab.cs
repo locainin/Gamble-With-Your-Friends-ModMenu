@@ -100,7 +100,7 @@ namespace ModMenu
             {
                 GUILayout.BeginHorizontal();
                 GUILayout.Label($"  {moneyMultiplier:F1}x", GUILayout.Width(50f));
-                moneyMultiplier = GUILayout.HorizontalSlider(moneyMultiplier, 0.5f, 10f);
+                moneyMultiplier = GUILayout.HorizontalSlider(moneyMultiplier, 1f, 10f);
                 GUILayout.EndHorizontal();
             }
             GUILayout.Space(6f);

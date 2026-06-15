@@ -19,10 +19,11 @@ namespace ModMenu
         // Refunds detected money spending while the protection toggle is active
         private void NoMoneySpendUpdate()
         {
-            if (cachedMM == null)
+            if (!HasEconomyAuthority())
             {
                 return;
             }
+            MoneyManager moneyManager = cachedMM!;
             if (revertCooldown > 0f)
             {
                 revertCooldown -= Time.unscaledDeltaTime;
@@ -30,7 +31,7 @@ namespace ModMenu
             }
             try
             {
-                long networkbalance = cachedMM.Networkbalance;
+                long networkbalance = moneyManager.Networkbalance;
                 // The first sample becomes the protected balance instead of creating a refund
                 if (lastKnownBalance < 0)
                 {
@@ -40,10 +41,8 @@ namespace ModMenu
                 {
                     long num = lastKnownBalance - networkbalance;
                     // Internal changes are excluded from multiplier detection
-                    isInternalMoneyChange = true;
                     // Refunds restore shared funds without recording fake player earnings
-                    CallAddBalance(num, countTowardPlayerProfit: false);
-                    isInternalMoneyChange = false;
+                    RunInternalMoneyChange(() => CallAddBalance(num, countTowardPlayerProfit: false));
                     revertCooldown = 0.3f;
                     lastKnownBalance = networkbalance;
                     ModMenuLoader.Log($"No Money Spend reverted: +${num:N0}");
@@ -61,10 +60,11 @@ namespace ModMenu
         // Refunds detected ticket spending while the protection toggle is active
         private void NoTicketSpendUpdate()
         {
-            if (cachedMM == null)
+            if (!HasEconomyAuthority())
             {
                 return;
             }
+            MoneyManager moneyManager = cachedMM!;
             if (ticketRevertCooldown > 0f)
             {
                 ticketRevertCooldown -= Time.unscaledDeltaTime;
@@ -75,7 +75,7 @@ namespace ModMenu
                 PropertyInfo property = typeof(MoneyManager).GetProperty("NetworkticketBalance", BindingFlags.Instance | BindingFlags.Public);
                 if (!(property == null))
                 {
-                    long num = (long)property.GetValue(cachedMM);
+                    long num = (long)property.GetValue(moneyManager);
                     // A fresh manager needs one observation before spending can be detected
                     if (lastKnownTicketBalance < 0)
                     {
@@ -103,10 +103,11 @@ namespace ModMenu
         // Adds a configurable bonus after detecting a positive balance change
         private void MoneyMultiplierUpdate()
         {
-            if (cachedMM == null)
+            if (!HasEconomyAuthority())
             {
                 return;
             }
+            MoneyManager moneyManager = cachedMM!;
             if (multiplierCooldown > 0f)
             {
                 multiplierCooldown -= Time.unscaledDeltaTime;
@@ -114,7 +115,7 @@ namespace ModMenu
             }
             try
             {
-                long networkbalance = cachedMM.Networkbalance;
+                long networkbalance = moneyManager.Networkbalance;
                 if (lastMultiplierBalance < 0)
                 {
                     lastMultiplierBalance = networkbalance;
@@ -122,14 +123,20 @@ namespace ModMenu
                 }
                 if (networkbalance > lastMultiplierBalance && !isInternalMoneyChange)
                 {
-                    long num = (long)((float)(networkbalance - lastMultiplierBalance) * (moneyMultiplier - 1f));
+                    long num = CurrencyPolicy.CalculateMultiplierBonus(
+                        networkbalance - lastMultiplierBalance,
+                        (decimal)moneyMultiplier);
                     if (num > 0)
                     {
                         // Add only the bonus because the game already applied the original gain
-                        isInternalMoneyChange = true;
                         // Multiplier bonuses are real gains and belong in the player total
-                        CallAddBalance(num, countTowardPlayerProfit: true);
-                        isInternalMoneyChange = false;
+                        bool changed = RunInternalMoneyChange(
+                            () => CallAddBalance(num, countTowardPlayerProfit: true));
+                        if (!changed)
+                        {
+                            lastMultiplierBalance = networkbalance;
+                            return;
+                        }
                         multiplierCooldown = 0.5f;
                         lastMultiplierBalance = networkbalance + num;
                         ModMenuLoader.Log($"Multiplier bonus: +${num:N0} ({moneyMultiplier:F1}x)");
@@ -146,17 +153,17 @@ namespace ModMenu
         // Validates and routes a positive money addition
         private void AddMoney(long amount)
         {
-            if (cachedMM == null)
+            if (!HasEconomyAuthority() || amount <= 0)
             {
-                ModMenuLoader.Log("Not in a game");
+                ModMenuLoader.Log("Host authority is required to add money");
                 return;
             }
-            isInternalMoneyChange = true;
-            bool num = CallAddBalance(amount, countTowardPlayerProfit: true);
-            isInternalMoneyChange = false;
+            bool num = RunInternalMoneyChange(
+                () => CallChangeBalance(amount, countTowardPlayerProfit: true));
             if (num)
             {
                 lastKnownBalance = -1L;
+                RecordShowcaseBalanceChange(amount);
             }
             ModMenuLoader.Log(num ? $"Added ${amount:N0}!" : "Failed");
         }
@@ -164,138 +171,108 @@ namespace ModMenu
         // Validates and routes a positive money removal
         private void RemoveMoney(long amount)
         {
-            if (cachedMM == null)
+            if (!HasEconomyAuthority() || amount <= 0)
             {
-                ModMenuLoader.Log("Not in a game");
+                ModMenuLoader.Log("Host authority is required to remove money");
                 return;
             }
-            isInternalMoneyChange = true;
-            bool num = CallRemoveBalance(amount, countTowardPlayerProfit: true);
-            isInternalMoneyChange = false;
+            MoneyManager moneyManager = cachedMM!;
+            long removableAmount = Math.Min(amount, moneyManager.Networkbalance);
+            if (removableAmount <= 0)
+            {
+                ModMenuLoader.Log("No money available to remove");
+                return;
+            }
+            bool num = RunInternalMoneyChange(
+                () => CallChangeBalance(-removableAmount, countTowardPlayerProfit: true));
             if (num)
             {
                 lastKnownBalance = -1L;
                 revertCooldown = 1f;
+                RecordShowcaseBalanceChange(-removableAmount);
             }
-            ModMenuLoader.Log(num ? $"Removed ${amount:N0}!" : "Failed");
+            ModMenuLoader.Log(num ? $"Removed ${removableAmount:N0}!" : "Failed");
         }
 
-        // Invokes the best available game method for increasing balance
+        // Converts a positive grant into the signed balance mutation used by the game
         private bool CallAddBalance(long amount, bool countTowardPlayerProfit)
         {
-            if (cachedMM == null)
+            return amount > 0 && CallChangeBalance(amount, countTowardPlayerProfit);
+        }
+
+        // Uses one signed path so balance and player-profit listeners receive the same direction
+        private bool CallChangeBalance(long signedAmount, bool countTowardPlayerProfit)
+        {
+            if (!HasEconomyAuthority() || signedAmount == 0)
             {
                 return false;
             }
+            MoneyManager moneyManager = cachedMM!;
             try
             {
                 PlayerProfile? localPlayerProfile = GetLocalPlayerProfile();
                 object? changeType = countTowardPlayerProfit ? changeTypePlayerProfit : changeTypeMisc;
-                if (cachedMM.isServer && changeType != null && localPlayerProfile != null)
-                {
-                    // Hosts can call the authoritative balance path directly
-                    MethodInfo method = typeof(MoneyManager).GetMethod("AddBalance", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                    if (method != null)
-                    {
-                        method.Invoke(cachedMM, new object[3] { amount, localPlayerProfile, changeType });
-                        return true;
-                    }
-                }
                 if (changeType != null && localPlayerProfile != null)
                 {
-                    // Clients request the same change through the game command
-                    MethodInfo method2 = typeof(MoneyManager).GetMethod("CmdTryChangeBalance", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                    if (method2 != null)
-                    {
-                        method2.Invoke(cachedMM, new object[3] { amount, localPlayerProfile, changeType });
-                        return true;
-                    }
-                }
-                FieldInfo field = typeof(MoneyManager).GetField("balance", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                if (field != null)
-                {
-                    // Direct synchronized state is a compatibility fallback for changed method names
-                    long num = (long)field.GetValue(cachedMM);
-                    field.SetValue(cachedMM, num + amount);
-                    cachedMM.Networkbalance = num + amount;
-                    return true;
+                    // TryChangeBalance validates both bounds before publishing the signed change
+                    return moneyManager.TryChangeBalance(signedAmount, localPlayerProfile, (ChangeType)changeType);
                 }
             }
             catch (Exception ex)
             {
-                ModMenuLoader.Log("AddBalance error: " + ex.Message);
+                ModMenuLoader.Log("ChangeBalance error: " + ex.Message);
             }
             return false;
         }
 
-        // Invokes the best available game method for decreasing balance
-        private bool CallRemoveBalance(long amount, bool countTowardPlayerProfit)
+        // Registers manual changes through the same result pipeline used by casino games
+        private void RecordShowcaseBalanceChange(long signedAmount)
         {
-            if (cachedMM == null)
+            if (signedAmount == 0 || cachedGM == null || !cachedGM.isServer)
             {
-                return false;
+                return;
             }
+
             try
             {
                 PlayerProfile? localPlayerProfile = GetLocalPlayerProfile();
-                object? changeType = countTowardPlayerProfit ? changeTypePlayerProfit : changeTypeMisc;
-                if (cachedMM.isServer && changeType != null && localPlayerProfile != null)
+                GameResultsManager? resultsManager = UnityEngine.Object.FindFirstObjectByType<GameResultsManager>();
+                if (localPlayerProfile == null || resultsManager == null)
                 {
-                    // Keep normal host-side accounting and notifications when available
-                    MethodInfo method = typeof(MoneyManager).GetMethod("RemoveBalance", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                    if (method != null)
-                    {
-                        method.Invoke(cachedMM, new object[3] { amount, localPlayerProfile, changeType });
-                        return true;
-                    }
+                    ModMenuLoader.Log("Game result tracking unavailable in this scene");
+                    return;
                 }
-                if (changeType != null && localPlayerProfile != null)
-                {
-                    MethodInfo method2 = typeof(MoneyManager).GetMethod("CmdTryChangeBalance", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                    if (method2 != null)
-                    {
-                        method2.Invoke(cachedMM, new object[3]
-                        {
-                            -amount,
-                            localPlayerProfile,
-                            changeType
-                        });
-                        return true;
-                    }
-                }
-                FieldInfo field = typeof(MoneyManager).GetField("balance", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                if (field != null)
-                {
-                    // Balance never falls below the game's zero lower bound
-                    long num = (long)field.GetValue(cachedMM) - amount;
-                    if (num < 0)
-                    {
-                        num = 0L;
-                    }
-                    field.SetValue(cachedMM, num);
-                    cachedMM.Networkbalance = num;
-                    return true;
-                }
+
+                long bet = signedAmount < 0 ? -signedAmount : 0L;
+                long payout = signedAmount > 0 ? signedAmount : 0L;
+                // The game has no manual result type, so its first valid enum keeps the record serializable
+                resultsManager.RegisterResult(
+                    bet,
+                    payout,
+                    localPlayerProfile,
+                    default(CasinoGameType),
+                    localPlayerProfile.transform.position);
             }
             catch (Exception ex)
             {
-                ModMenuLoader.Log("RemoveBalance error: " + ex.Message);
+                ModMenuLoader.Log("Game result tracking error: " + ex.Message);
             }
-            return false;
         }
 
         // Adds only the remaining balance required to satisfy the quota
         private void MeetQuota()
         {
-            if (cachedGM == null || cachedMM == null)
+            if (!HasEconomyAuthority())
             {
-                ModMenuLoader.Log("Not in a game");
+                ModMenuLoader.Log("Host authority is required to meet quota");
                 return;
             }
+            MoneyManager moneyManager = cachedMM!;
+            GameManager gameManager = cachedGM!;
             try
             {
-                long networkbalance = cachedMM.Networkbalance;
-                long networkcurrentQuota = cachedGM.NetworkcurrentQuota;
+                long networkbalance = moneyManager.Networkbalance;
+                long networkcurrentQuota = gameManager.NetworkcurrentQuota;
                 ModMenuLoader.Log($"MeetQuota: money={networkbalance}, quotaTarget={networkcurrentQuota}");
                 if (networkbalance >= networkcurrentQuota)
                 {
@@ -304,9 +281,8 @@ namespace ModMenu
                 }
                 long num = networkcurrentQuota - networkbalance;
                 ModMenuLoader.Log($"MeetQuota: adding ${num} to reach quota");
-                isInternalMoneyChange = true;
-                bool num2 = CallAddBalance(num, countTowardPlayerProfit: true);
-                isInternalMoneyChange = false;
+                bool num2 = RunInternalMoneyChange(
+                    () => CallAddBalance(num, countTowardPlayerProfit: true));
                 if (num2)
                 {
                     lastKnownBalance = -1L;
@@ -320,34 +296,22 @@ namespace ModMenu
             }
         }
 
-        // Invokes the best available game method for increasing tickets
+        // Uses the host-only ticket validator instead of the client command accepted by the base game
         private bool CallAddTickets(long amount)
         {
-            if (cachedMM == null)
+            if (!HasEconomyAuthority() || amount <= 0)
             {
                 return false;
             }
+            MoneyManager moneyManager = cachedMM!;
             try
             {
-                if (cachedGM != null && cachedGM.isServer)
-                {
-                    // Hosts use the direct ticket mutation before trying a command path
-                    MethodInfo method = typeof(MoneyManager).GetMethod("AddTicket", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                    if (method != null)
-                    {
-                        method.Invoke(cachedMM, new object[1] { amount });
-                        return true;
-                    }
-                }
-                MethodInfo method2 = typeof(MoneyManager).GetMethod("CmdTryChangeTicketBalance", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                if (method2 != null)
-                {
-                    method2.Invoke(cachedMM, new object[1] { amount });
-                    return true;
-                }
+                // Direct server validation avoids exposing the game's unauthenticated command path
+                return moneyManager.TryChangeTicketBalance(amount);
             }
-            catch
+            catch (Exception ex)
             {
+                ModMenuLoader.Log("Ticket change error: " + ex.Message);
             }
             return false;
         }
@@ -368,6 +332,12 @@ namespace ModMenu
         // Finds a nearby game and requests its normal payout flow
         private void TriggerWin()
         {
+            if (!HasEconomyAuthority())
+            {
+                ModMenuLoader.Log("Host authority is required to trigger a win");
+                return;
+            }
+
             try
             {
                 NewConsole newConsole = UnityEngine.Object.FindFirstObjectByType<NewConsole>();
@@ -387,6 +357,30 @@ namespace ModMenu
             catch (Exception ex)
             {
                 ModMenuLoader.Log("Error: " + ex.Message);
+            }
+        }
+
+        // Economy mutations require both scene managers to be authoritative
+        private bool HasEconomyAuthority()
+        {
+            // Checking both managers prevents stale cross-scene references from authorizing a mutation
+            return cachedGM != null &&
+                cachedGM.isServer &&
+                cachedMM != null &&
+                cachedMM.isServer;
+        }
+
+        // Always releases the multiplier suppression flag when a game call fails
+        private bool RunInternalMoneyChange(Func<bool> mutation)
+        {
+            isInternalMoneyChange = true;
+            try
+            {
+                return mutation();
+            }
+            finally
+            {
+                isInternalMoneyChange = false;
             }
         }
 
