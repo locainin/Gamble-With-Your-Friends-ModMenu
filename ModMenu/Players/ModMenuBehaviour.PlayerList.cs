@@ -21,7 +21,7 @@ namespace ModMenu
             }
 
             EnsureSelectedPlayer(profiles);
-            PlayerProfile? selectedProfile = FindPlayerProfileBySteamId(profiles, selectedPlayerSteamId);
+            PlayerProfile? selectedProfile = FindPlayerProfileByInstanceId(profiles, selectedPlayerInstanceId);
 
             // The roster remains narrow while the inspector receives the working width
             GUILayout.BeginHorizontal();
@@ -34,22 +34,26 @@ namespace ModMenu
         // Keeps the current selection valid as players join or leave
         private void EnsureSelectedPlayer(PlayerProfile[] profiles)
         {
-            if (FindPlayerProfileBySteamId(profiles, selectedPlayerSteamId) != null)
+            if (FindPlayerProfileByInstanceId(profiles, selectedPlayerInstanceId) != null)
             {
                 return;
             }
+
+            int previousInstanceId = selectedPlayerInstanceId;
 
             // Prefer the local player so solo sessions open on useful data
             foreach (PlayerProfile profile in profiles)
             {
                 if (profile != null && profile.isLocalPlayer)
                 {
-                    selectedPlayerSteamId = profile.steamId;
+                    SelectPlayer(profile);
+                    RestoreVisibilityAfterSelectionChange(profiles, previousInstanceId);
                     return;
                 }
             }
 
-            selectedPlayerSteamId = profiles[0].steamId;
+            SelectPlayer(profiles[0]);
+            RestoreVisibilityAfterSelectionChange(profiles, previousInstanceId);
         }
 
         // Renders connected players as a scan-friendly selection list
@@ -67,7 +71,7 @@ namespace ModMenu
                     continue;
                 }
 
-                bool isSelected = profile.steamId == selectedPlayerSteamId;
+                bool isSelected = profile.GetInstanceID() == selectedPlayerInstanceId;
                 string playerName = string.IsNullOrEmpty(profile.playerName) ? "Unknown Player" : profile.playerName;
                 string ownership = profile.isLocalPlayer ? "LOCAL" : "REMOTE";
                 GUIStyle rowStyle = isSelected ? activeTabStyle : tabStyle;
@@ -75,7 +79,9 @@ namespace ModMenu
                 GUILayout.BeginVertical(GUI.skin.box);
                 if (GUILayout.Button(playerName, rowStyle, GUILayout.Height(31f)))
                 {
-                    selectedPlayerSteamId = profile.steamId;
+                    int previousInstanceId = selectedPlayerInstanceId;
+                    SelectPlayer(profile);
+                    RestoreVisibilityAfterSelectionChange(profiles, previousInstanceId);
                     playerInspectorScrollPos = Vector2.zero;
                 }
                 GUILayout.Label("  " + ownership, smallLabelStyle);
@@ -169,9 +175,13 @@ namespace ModMenu
             PlayerOrgans playerOrgans = profile.GetComponent<PlayerOrgans>() ?? profile.GetComponentInChildren<PlayerOrgans>();
 
             DrawSection("Connection");
-            DrawDataRow("Steam ID", profile.steamId.ToString(CultureInfo.InvariantCulture));
-            DrawDataRow("Address", GetConnectionAddress(playerOrgans, profile));
-            DrawDataRow("Authority", isHost ? "Server" : profile.isLocalPlayer ? "Local client" : "Observed client");
+            string steamId = profile.hasSynced && profile.steamId != 0uL
+                ? profile.steamId.ToString(CultureInfo.InvariantCulture)
+                : "Synchronizing";
+            DrawDataRow("Steam ID", steamId);
+            string connectionEndpoint = GetConnectionEndpoint(playerOrgans, profile, out string endpointLabel);
+            DrawDataRow(endpointLabel, connectionEndpoint);
+            DrawDataRow("Authority", GetPlayerAuthorityLabel(profile, isHost));
 
             DrawSection("Status");
             if (playerController == null)
@@ -201,29 +211,6 @@ namespace ModMenu
             }
         }
 
-        // Exposes the synchronized model visibility command only for the owned player object
-        private void DrawPlayerVisibilityControl(PlayerProfile profile)
-        {
-            DrawSection("Visibility");
-            CameramanMode? visibility = profile.GetComponent<CameramanMode>();
-            bool canChangeVisibility = visibility != null && profile.isLocalPlayer;
-            bool previousEnabled = GUI.enabled;
-            GUI.enabled = previousEnabled && canChangeVisibility;
-
-            string actionLabel = visibility != null && visibility.IsVisible ? "Make Invisible" : "Make Visible";
-            if (GUILayout.Button(actionLabel))
-            {
-                // Mirror permits this command only from the client that owns the profile
-                visibility!.ToggleVisibility();
-            }
-
-            GUI.enabled = previousEnabled;
-            if (!canChangeVisibility)
-            {
-                GUILayout.Label("  Visibility can only be changed for the local player", smallLabelStyle);
-            }
-        }
-
         // Draws one aligned key and value row
         private void DrawDataRow(string label, string value)
         {
@@ -249,9 +236,14 @@ namespace ModMenu
         // Finds one profile from the current lobby snapshot
         private static PlayerProfile? FindPlayerProfileBySteamId(PlayerProfile[] profiles, ulong steamId)
         {
+            if (steamId == 0uL)
+            {
+                return null;
+            }
+
             foreach (PlayerProfile profile in profiles)
             {
-                if (profile != null && profile.steamId == steamId)
+                if (profile != null && profile.hasSynced && profile.steamId == steamId)
                 {
                     return profile;
                 }
@@ -260,33 +252,25 @@ namespace ModMenu
             return null;
         }
 
-        // Returns Mirror transport address data when the host can access it
-        private string GetConnectionAddress(PlayerOrgans playerOrgans, PlayerProfile playerProfile)
+        // Finds one scene profile without relying on Steam data that may not be synchronized yet
+        private static PlayerProfile? FindPlayerProfileByInstanceId(PlayerProfile[] profiles, int instanceId)
         {
-            try
+            // Instance IDs are valid for the current scene even before Steam synchronization completes
+            foreach (PlayerProfile profile in profiles)
             {
-                // Mirror exposes remote transport addresses only to the server connection
-                if (playerOrgans != null && playerOrgans.connectionToClient != null && !string.IsNullOrEmpty(playerOrgans.connectionToClient.address))
+                if (profile != null && profile.GetInstanceID() == instanceId)
                 {
-                    return playerOrgans.connectionToClient.address;
+                    return profile;
                 }
-                if (playerProfile != null && playerProfile.isLocalPlayer)
-                {
-                    return "localhost";
-                }
-            }
-            catch
-            {
-                // Connection replacement can briefly invalidate the transport object
             }
 
-            return IsHostAddressAvailable(playerProfile) ? "server hidden" : "unavailable";
+            return null;
         }
 
-        // Distinguishes a hidden server address from a missing client connection
-        private bool IsHostAddressAvailable(PlayerProfile? playerProfile)
+        // Keeps scene selection exact while retaining Steam IDs for network actions
+        private void SelectPlayer(PlayerProfile profile)
         {
-            return cachedGM != null && cachedGM.isServer && playerProfile != null && !playerProfile.isLocalPlayer;
+            selectedPlayerInstanceId = profile.GetInstanceID();
         }
     }
 }
