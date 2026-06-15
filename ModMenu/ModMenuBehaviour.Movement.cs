@@ -19,56 +19,100 @@ namespace ModMenu
         // Applies local speed, jump, and gravity overrides from saved base values
         private void ApplyMovementHacks()
         {
-            if (cachedPlayerSettings == null || fMaxSpeed == null || fSprintSpeed == null || fAccel == null || fJumpForce == null)
+            if (cachedPlayerSettings == null)
             {
                 return;
             }
             try
             {
                 FieldInfo field = cachedPlayerSettings.GetType().GetField("gravity", BindingFlags.Instance | BindingFlags.Public);
-                if (originalMaxSpeed < 0f)
+                if (!hasMovementBaseline)
                 {
-                    // Base values are captured once for this scene and restored when toggles turn off
-                    originalMaxSpeed = (float)fMaxSpeed.GetValue(cachedPlayerSettings);
-                    originalSprintMaxSpeed = (float)fSprintSpeed.GetValue(cachedPlayerSettings);
-                    originalAcceleration = (float)fAccel.GetValue(cachedPlayerSettings);
-                    originalJumpForce = (float)fJumpForce.GetValue(cachedPlayerSettings);
+                    // Each available field keeps its real value, including valid zero values
+                    originalMaxSpeed = ReadMovementValue(fMaxSpeed);
+                    originalSprintMaxSpeed = ReadMovementValue(fSprintSpeed);
+                    originalAcceleration = ReadMovementValue(fAccel);
+                    originalJumpForce = ReadMovementValue(fJumpForce);
                     if (field != null)
                     {
                         originalGravity = (float)field.GetValue(cachedPlayerSettings);
                     }
+                    hasMovementBaseline = true;
                 }
-                if (speedHackEnabled)
+
+                if (fMaxSpeed != null && fSprintSpeed != null && fAccel != null && originalMaxSpeed >= 0f &&
+                    originalSprintMaxSpeed >= 0f && originalAcceleration >= 0f)
                 {
-                    fMaxSpeed.SetValue(cachedPlayerSettings, originalMaxSpeed * speedMultiplier);
-                    fSprintSpeed.SetValue(cachedPlayerSettings, originalSprintMaxSpeed * speedMultiplier);
-                    fAccel.SetValue(cachedPlayerSettings, originalAcceleration * speedMultiplier);
+                    float appliedSpeedMultiplier = speedHackEnabled ? speedMultiplier : 1f;
+                    fMaxSpeed.SetValue(cachedPlayerSettings, originalMaxSpeed * appliedSpeedMultiplier);
+                    fSprintSpeed.SetValue(cachedPlayerSettings, originalSprintMaxSpeed * appliedSpeedMultiplier);
+                    fAccel.SetValue(cachedPlayerSettings, originalAcceleration * appliedSpeedMultiplier);
                 }
-                else if (originalMaxSpeed > 0f)
+
+                if (fJumpForce != null && originalJumpForce >= 0f)
                 {
-                    fMaxSpeed.SetValue(cachedPlayerSettings, originalMaxSpeed);
-                    fSprintSpeed.SetValue(cachedPlayerSettings, originalSprintMaxSpeed);
-                    fAccel.SetValue(cachedPlayerSettings, originalAcceleration);
+                    float appliedJumpMultiplier = jumpHackEnabled ? jumpMultiplier : 1f;
+                    fJumpForce.SetValue(cachedPlayerSettings, originalJumpForce * appliedJumpMultiplier);
                 }
-                if (jumpHackEnabled)
-                {
-                    fJumpForce.SetValue(cachedPlayerSettings, originalJumpForce * jumpMultiplier);
-                }
-                else if (originalJumpForce > 0f)
-                {
-                    fJumpForce.SetValue(cachedPlayerSettings, originalJumpForce);
-                }
+
                 if (flyHackEnabled && field != null)
                 {
                     field.SetValue(cachedPlayerSettings, 0f);
                 }
-                else if (!flyHackEnabled && field != null && originalGravity > 0f)
+                else if (field != null && originalGravity >= 0f)
                 {
                     field.SetValue(cachedPlayerSettings, originalGravity);
                 }
             }
             catch
             {
+            }
+        }
+
+        // Reads one optional movement field without coupling unrelated overrides
+        private float ReadMovementValue(FieldInfo? field)
+        {
+            return cachedPlayerSettings != null && field != null
+                ? (float)field.GetValue(cachedPlayerSettings)
+                : -1f;
+        }
+
+        // Restores the shared settings resource before scene changes or plugin teardown
+        private void RestoreMovementOverrides()
+        {
+            if (cachedPlayerSettings == null || !hasMovementBaseline)
+            {
+                return;
+            }
+
+            try
+            {
+                if (fMaxSpeed != null && originalMaxSpeed >= 0f)
+                {
+                    fMaxSpeed.SetValue(cachedPlayerSettings, originalMaxSpeed);
+                }
+                if (fSprintSpeed != null && originalSprintMaxSpeed >= 0f)
+                {
+                    fSprintSpeed.SetValue(cachedPlayerSettings, originalSprintMaxSpeed);
+                }
+                if (fAccel != null && originalAcceleration >= 0f)
+                {
+                    fAccel.SetValue(cachedPlayerSettings, originalAcceleration);
+                }
+                if (fJumpForce != null && originalJumpForce >= 0f)
+                {
+                    fJumpForce.SetValue(cachedPlayerSettings, originalJumpForce);
+                }
+
+                FieldInfo? gravityField = cachedPlayerSettings.GetType().GetField("gravity", BindingFlags.Instance | BindingFlags.Public);
+                if (gravityField != null && originalGravity >= 0f)
+                {
+                    gravityField.SetValue(cachedPlayerSettings, originalGravity);
+                }
+            }
+            catch (Exception ex)
+            {
+                ModMenuLoader.Log("Movement restore error: " + ex.Message);
             }
         }
 
@@ -162,6 +206,7 @@ namespace ModMenu
                     if (!wasFlying)
                     {
                         // Kinematic mode prevents physics from fighting direct position movement
+                        wasKinematicBeforeFlying = rigidbody.isKinematic;
                         rigidbody.isKinematic = true;
                         wasFlying = true;
                     }
@@ -195,11 +240,11 @@ namespace ModMenu
                             zero += transform.right;
                         }
                     }
-                    if ((flyUpKey != KeyCode.None && IsKeyDown(flyUpKey)) || IsKeyDown(KeyCode.Space))
+                    if (IsKeyDown(flyUpKey))
                     {
                         zero += Vector3.up;
                     }
-                    if ((flyDownKey != KeyCode.None && IsKeyDown(flyDownKey)) || IsKeyDown(KeyCode.LeftControl))
+                    if (IsKeyDown(flyDownKey))
                     {
                         zero -= Vector3.up;
                     }
@@ -208,12 +253,41 @@ namespace ModMenu
                 else if (wasFlying)
                 {
                     // Physics resumes only after a no-clip session actually changed the body
-                    rigidbody.isKinematic = false;
+                    rigidbody.isKinematic = wasKinematicBeforeFlying;
                     wasFlying = false;
+                    wasKinematicBeforeFlying = false;
                 }
             }
             catch
             {
+            }
+        }
+
+        // Restores the local rigidbody when no clip is interrupted outside the normal update path
+        private void RestoreFlightPhysics()
+        {
+            if (cachedLocalPC == null || !wasFlying)
+            {
+                return;
+            }
+
+            try
+            {
+                FieldInfo? field = typeof(PlayerController).GetField("_rb", BindingFlags.Instance | BindingFlags.NonPublic);
+                Rigidbody? rigidbody = field?.GetValue(cachedLocalPC) as Rigidbody;
+                if (rigidbody != null)
+                {
+                    rigidbody.isKinematic = wasKinematicBeforeFlying;
+                }
+            }
+            catch (Exception ex)
+            {
+                ModMenuLoader.Log("No clip restore error: " + ex.Message);
+            }
+            finally
+            {
+                wasFlying = false;
+                wasKinematicBeforeFlying = false;
             }
         }
 

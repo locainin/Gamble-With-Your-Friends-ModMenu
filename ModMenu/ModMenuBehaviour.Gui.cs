@@ -130,18 +130,18 @@ namespace ModMenu
                     IsMenuOpen = showMenu;
                     current.Use();
                 }
-                else if (flyToggleKey != KeyCode.None && current.keyCode == flyToggleKey)
+                else if (!showMenu && flyToggleKey != KeyCode.None && current.keyCode == flyToggleKey)
                 {
                     flyHackEnabled = !flyHackEnabled;
                     ModMenuLoader.Log("Fly " + (flyHackEnabled ? "Enabled" : "Disabled"));
                     current.Use();
                 }
-                else if (triggerWinKey != KeyCode.None && current.keyCode == triggerWinKey)
+                else if (!showMenu && triggerWinKey != KeyCode.None && current.keyCode == triggerWinKey)
                 {
                     TriggerWin();
                     current.Use();
                 }
-                else if (addMoneyKey != KeyCode.None && current.keyCode == addMoneyKey)
+                else if (!showMenu && addMoneyKey != KeyCode.None && current.keyCode == addMoneyKey)
                 {
                     long result = 0L;
                     if (long.TryParse(moneyInputStr, out result) && result > 0)
@@ -150,7 +150,7 @@ namespace ModMenu
                     }
                     current.Use();
                 }
-                else if (removeMoneyKey != KeyCode.None && current.keyCode == removeMoneyKey)
+                else if (!showMenu && removeMoneyKey != KeyCode.None && current.keyCode == removeMoneyKey)
                 {
                     long result2 = 0L;
                     if (long.TryParse(moneyInputStr, out result2) && result2 > 0)
@@ -159,7 +159,7 @@ namespace ModMenu
                     }
                     current.Use();
                 }
-                else if (addTicketKey != KeyCode.None && current.keyCode == addTicketKey)
+                else if (!showMenu && addTicketKey != KeyCode.None && current.keyCode == addTicketKey)
                 {
                     long amount = (long)Mathf.Pow(10f, ticketSliderLog);
                     AddTickets(amount);
@@ -371,7 +371,8 @@ namespace ModMenu
             GUILayout.EndVertical();
             GUILayout.FlexibleSpace();
 
-            GUI.enabled = !isSelected;
+            bool previousEnabled = GUI.enabled;
+            GUI.enabled = previousEnabled && !isSelected;
             if (GUILayout.Button(isSelected ? "Active" : "Apply", isSelected ? activeTabStyle : GUI.skin.button, GUILayout.Width(70f), GUILayout.Height(30f)))
             {
                 selectedThemeIndex = themeIndex;
@@ -379,7 +380,7 @@ namespace ModMenu
                 PlayerPrefs.Save();
                 ReleaseUiSkin();
             }
-            GUI.enabled = true;
+            GUI.enabled = previousEnabled;
             GUILayout.EndHorizontal();
         }
 

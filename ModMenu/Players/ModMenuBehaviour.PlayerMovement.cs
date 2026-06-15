@@ -19,11 +19,12 @@ namespace ModMenu
             DrawSection("Local Movement");
             // Unity input and movement components are owned by the local client
             bool canEditMovement = playerProfile.isLocalPlayer;
+            bool previousEnabled = GUI.enabled;
             if (!canEditMovement)
             {
                 GUILayout.Label("  Movement, jump, and no clip only affect the local player.", smallLabelStyle);
             }
-            GUI.enabled = canEditMovement;
+            GUI.enabled = previousEnabled && canEditMovement;
             speedHackEnabled = GUILayout.Toggle(speedHackEnabled, speedHackEnabled ? " SPEED ACTIVE" : " Speed Modifier");
             if (speedHackEnabled)
             {
@@ -50,7 +51,7 @@ namespace ModMenu
                 flySpeedMultiplier = GUILayout.HorizontalSlider(flySpeedMultiplier, 0.5f, 10f);
                 GUILayout.EndHorizontal();
             }
-            GUI.enabled = true;
+            GUI.enabled = previousEnabled;
         }
 
     }
