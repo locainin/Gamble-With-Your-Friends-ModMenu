@@ -28,7 +28,18 @@ namespace ModMenu
             {
                 if (playerProfile != null && playerProfile.isLocalPlayer)
                 {
-                    return "Local process (no remote IP)";
+                    if (cachedGM != null && cachedGM.isServer)
+                    {
+                        return "Local host process (no remote IP)";
+                    }
+
+                    // A client local profile connects outward to the server
+                    string serverAddress = Mirror.NetworkManager.singleton != null
+                        ? Mirror.NetworkManager.singleton.networkAddress
+                        : string.Empty;
+                    return string.IsNullOrWhiteSpace(serverAddress)
+                        ? "Server connection unavailable"
+                        : FormatConnectionAddress(serverAddress, out endpointLabel);
                 }
 
                 string address = playerProfile != null && playerProfile.connectionToClient != null
@@ -39,20 +50,7 @@ namespace ModMenu
                 // Mirror transports may return an IP, a relay peer ID, or an opaque endpoint label
                 if (!string.IsNullOrWhiteSpace(address))
                 {
-                    if (TryNormalizeIpAddress(address, out string ipAddress))
-                    {
-                        endpointLabel = "IP Address";
-                        return ipAddress;
-                    }
-
-                    // FizzySteamworks returns a Steam peer ID because relay networking hides IPs
-                    if (ulong.TryParse(address, NumberStyles.None, CultureInfo.InvariantCulture, out ulong peerId) &&
-                        peerId != 0uL)
-                    {
-                        return "Steam relay (IP hidden)";
-                    }
-
-                    return address;
+                    return FormatConnectionAddress(address, out endpointLabel);
                 }
             }
             catch (Exception ex)
@@ -62,6 +60,26 @@ namespace ModMenu
             }
 
             return IsHostAddressAvailable(playerProfile) ? "Transport hides remote IP" : "Unavailable";
+        }
+
+        // Classifies transport addresses without labeling Steam peer IDs as IP addresses
+        private static string FormatConnectionAddress(string address, out string endpointLabel)
+        {
+            endpointLabel = "Endpoint";
+            if (TryNormalizeIpAddress(address, out string ipAddress))
+            {
+                endpointLabel = "IP Address";
+                return ipAddress;
+            }
+
+            // FizzySteamworks returns a Steam peer ID because relay networking hides IPs
+            if (ulong.TryParse(address, NumberStyles.None, CultureInfo.InvariantCulture, out ulong peerId) &&
+                peerId != 0uL)
+            {
+                return "Steam relay (IP hidden)";
+            }
+
+            return address;
         }
 
         // Accepts plain IPs and common host-port forms without treating Steam IDs as addresses

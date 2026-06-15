@@ -12,6 +12,7 @@ The project builds one `ModMenu.dll` BepInEx plugin. BepInEx loads the plugin wh
 - Client actions are limited to the locally owned player
 - Gameplay input is paused while the menu is open, leaving the cursor usable
 - Organ edits use Steam ID-backed records and persist through the game save path
+- Session protection follows synchronized Steam IDs through scene changes and reconnects
 - Settings such as themes, overlays, and keybinds use Unity `PlayerPrefs`
 
 Press `Insert` to open or close the menu. The toggle can be changed under **Binds**.
@@ -21,6 +22,7 @@ Press `Insert` to open or close the menu. The toggle can be changed under **Bind
 ### Currencies
 
 - Add or remove money
+- Record manual balance changes in the base game's end-of-day result history
 - Add tickets
 - Meet the active quota
 - Apply a money gain multiplier
@@ -29,7 +31,7 @@ Press `Insert` to open or close the menu. The toggle can be changed under **Bind
 
 ### Session
 
-- Heal, wake, or reset temporary effects for every connected player
+- Heal, wake, or reset physical effects for every connected player
 - Force organ state persistence
 - Direct clients to contextual controls in the player inspector
 
@@ -42,11 +44,12 @@ Press `Insert` to open or close the menu. The toggle can be changed under **Bind
 
 ### Players
 
-- Inspect player name, Steam ID, connection address availability, authority, state, body, and energy
+- Inspect player name, Steam ID, transport endpoint availability, authority, state, body, and energy
 - Bring a player to the host, go to a player, move one player to another, or swap positions
 - Restore or remove individual organs
 - Enable per-player organ protection
-- Prevent selected players from being picked up while downed
+- Prevent selected players from being picked up while downed through host enforcement
+- Enable per-player take-no-hits protection against server knockback
 - Wake, freeze, lock head movement, rotate view, knock back, ragdoll, launch, or move a player nearby
 - Drain or refill energy
 - Apply temporary replicated buffs
@@ -57,9 +60,9 @@ Press `Insert` to open or close the menu. The toggle can be changed under **Bind
 ### World
 
 - Target all NPCs, the closest NPC, or one distance-sorted NPC
-- Persistently direct the selected NPC scope to follow a player
+- Persistently direct the selected NPC scope to follow a player across temporary target loss
 - Warp, shove, launch, ragdoll, or reset NPCs
-- Change game speed
+- Change host simulation speed
 - Add, subtract, pause, or resume day time
 - Set the current day and rebuild its quota cycle, floor, rewards, save state, and active casino floor
 - Recover unpurchased lobby items
@@ -73,6 +76,16 @@ Press `Insert` to open or close the menu. The toggle can be changed under **Bind
 - Rebind menu, no-clip, economy, and trigger-win actions
 
 Host-only controls are disabled when the local player does not own server authority.
+
+## Multiplayer And Persistence
+
+- Server-owned economy, organ, pickup, item, NPC, day, and world changes require the host
+- Local movement and model visibility use the selected player's owned network object
+- Visibility restores are sent explicitly when selection changes, including while an earlier hide command is still in flight
+- Organ, pickup, and take-no-hits protection remain tied to a Steam ID through scene rebuilds and reconnects, then clear when the game process exits
+- NPC follow keeps its player target through scene changes and short disconnect windows; one-NPC scope falls back to the closest NPC after scene objects are rebuilt
+- Direct transports can expose a real IP address; Steam relay sessions expose a Steam peer ID instead, so the menu reports that the IP is hidden
+- Installing a new DLL does not hot-reload an active BepInEx plugin; fully restart the game after every update
 
 ## Linux Installation
 
