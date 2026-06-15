@@ -6,12 +6,19 @@ namespace ModMenu
     {
         private const float NpcFollowInterval = 0.35f;
 
-        private const float NpcFollowTargetGracePeriod = 8f;
+        private const float NpcFollowTargetGracePeriod = 30f;
 
         // Starts a persistent follow using stable player and NPC identifiers
         private void StartNpcFollow(PlayerProfile targetProfile, NPC[] currentTargets)
         {
+            if (targetProfile == null || !targetProfile.hasSynced || targetProfile.steamId == 0uL)
+            {
+                ModMenuLoader.Log("NPC follow target identity is not synchronized yet");
+                return;
+            }
+
             npcFollowEnabled = true;
+            // Steam identity survives floor changes while the profile object does not
             npcFollowTargetSteamId = targetProfile.steamId;
             npcFollowScope = npcControlScope;
             npcFollowInstanceId = npcControlScope == 2 && currentTargets.Length == 1
@@ -85,8 +92,17 @@ namespace ModMenu
             NPC[] targets = ResolveNpcFollowTargets();
             if (targets.Length == 0)
             {
-                StopNpcFollow();
+                // NPC registration can briefly be empty while a floor or lobby is rebuilding
                 return;
+            }
+
+            foreach (NPC npc in targets)
+            {
+                if (npc != null && npc.State != NPC.NPCState.Free)
+                {
+                    // Free state restores the navigation agent before the next refresh
+                    npc.State = NPC.NPCState.Free;
+                }
             }
 
             // Spaced destinations prevent a bulk scope from collapsing into one body pile
@@ -115,7 +131,15 @@ namespace ModMenu
             }
 
             NPC? selectedNpc = FindNpcByInstanceId(npcs, npcFollowInstanceId);
-            return selectedNpc == null ? System.Array.Empty<NPC>() : new NPC[1] { selectedNpc };
+            if (selectedNpc != null)
+            {
+                return new NPC[1] { selectedNpc };
+            }
+
+            // Scene objects have no stable NPC identity, so keep the command alive with a replacement
+            npcFollowScope = 1;
+            npcFollowInstanceId = 0;
+            return new NPC[1] { npcs[0] };
         }
 
         // Resolves the scope currently selected in World for a new player follow request
@@ -144,9 +168,14 @@ namespace ModMenu
         // Returns a readable player label for persistent follow status
         private static string GetPlayerNameBySteamId(PlayerProfile[] profiles, ulong steamId)
         {
+            if (steamId == 0uL)
+            {
+                return "Disconnected Player";
+            }
+
             foreach (PlayerProfile profile in profiles)
             {
-                if (profile != null && profile.steamId == steamId)
+                if (profile != null && profile.hasSynced && profile.steamId == steamId)
                 {
                     return string.IsNullOrEmpty(profile.playerName) ? "Unknown Player" : profile.playerName;
                 }

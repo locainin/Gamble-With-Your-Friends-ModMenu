@@ -8,10 +8,16 @@ namespace ModMenu
         private void DrawNpcFollowPlayerControl(PlayerProfile profile, bool isHost)
         {
             DrawSection("NPC Follow Target");
-            bool followsThisPlayer = npcFollowEnabled && npcFollowTargetSteamId == profile.steamId;
+            bool hasStableIdentity = profile.hasSynced && profile.steamId != 0uL;
+            bool followsThisPlayer = hasStableIdentity &&
+                npcFollowEnabled &&
+                npcFollowTargetSteamId == profile.steamId;
             NPC[] availableTargets = UnityEngine.Object.FindObjectsByType<NPC>(FindObjectsSortMode.None);
             bool previousEnabled = GUI.enabled;
-            GUI.enabled = previousEnabled && isHost && (followsThisPlayer || availableTargets.Length > 0);
+            GUI.enabled = previousEnabled &&
+                isHost &&
+                hasStableIdentity &&
+                (followsThisPlayer || availableTargets.Length > 0);
 
             if (GUILayout.Button(followsThisPlayer ? "Stop Following This Player" : "Follow This Player"))
             {
@@ -29,6 +35,10 @@ namespace ModMenu
             GUI.enabled = previousEnabled;
             string scopeLabel = npcScopeNames[Mathf.Clamp(npcControlScope, 0, npcScopeNames.Length - 1)];
             GUILayout.Label($"  NPC scope: {scopeLabel}  |  Change scope in World", smallLabelStyle);
+            if (!hasStableIdentity)
+            {
+                GUILayout.Label("  Waiting for player identity synchronization", smallLabelStyle);
+            }
             if (!isHost)
             {
                 DrawHostWarning("Host authority is required for NPC follow");
