@@ -207,11 +207,14 @@ public sealed class SourceArchitectureTests
 
         Assert.Contains("internal static bool IsMenuOpen", behaviour, StringComparison.Ordinal);
         Assert.Contains("GameplayInputRelease.Send()", behaviour, StringComparison.Ordinal);
+        Assert.Contains("GameplayInputRelease.SendKeyboardSnapshot()", behaviour, StringComparison.Ordinal);
         Assert.Contains("Cursor.lockState = CursorLockMode.None", behaviour, StringComparison.Ordinal);
         Assert.Contains("InputReaderGameplayPatch", inputCapture, StringComparison.Ordinal);
         Assert.Contains("return !ModMenuBehaviour.IsMenuOpen", inputCapture, StringComparison.Ordinal);
         Assert.Contains("\"OnMove\"", inputCapture, StringComparison.Ordinal);
         Assert.Contains("\"OnInteract\"", inputCapture, StringComparison.Ordinal);
+        Assert.Contains("UpdateSprint", inputCapture, StringComparison.Ordinal);
+        Assert.Contains("VirtualKeyShift", inputCapture, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -358,6 +361,23 @@ public sealed class SourceArchitectureTests
         Assert.Contains("!showMenu && addMoneyKey", gui, StringComparison.Ordinal);
         Assert.Contains("!showMenu && removeMoneyKey", gui, StringComparison.Ordinal);
         Assert.Contains("!showMenu && addTicketKey", gui, StringComparison.Ordinal);
+        Assert.Contains("SetFlyHackEnabled(!flyHackEnabled)", gui, StringComparison.Ordinal);
+        Assert.Contains("CurrencyPolicy.TryParsePositiveAmount(moneyInputStr", gui, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MoneyAmountInputFiltersInvalidTextWithoutTrappingTheFieldBlank()
+    {
+        string behaviour = File.ReadAllText(Path.Combine(ProjectRoot, "ModMenu", "ModMenuBehaviour.cs"));
+        string currencyTab = File.ReadAllText(
+            Path.Combine(ProjectRoot, "ModMenu", "Tabs", "ModMenuBehaviour.CurrenciesTab.cs"));
+        string policy = File.ReadAllText(Path.Combine(ProjectRoot, "ModMenu", "CurrencyPolicy.cs"));
+
+        Assert.Contains("MoneyAmountControlName", behaviour, StringComparison.Ordinal);
+        Assert.Contains("GUI.SetNextControlName(MoneyAmountControlName)", currencyTab, StringComparison.Ordinal);
+        Assert.Contains("CurrencyPolicy.NormalizeMoneyInput", currencyTab, StringComparison.Ordinal);
+        Assert.Contains("CurrencyPolicy.TryParsePositiveAmount", currencyTab, StringComparison.Ordinal);
+        Assert.Contains("DefaultMoneyInput", policy, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -368,6 +388,12 @@ public sealed class SourceArchitectureTests
 
         Assert.Contains("if (IsKeyDown(flyUpKey))", movement, StringComparison.Ordinal);
         Assert.Contains("if (IsKeyDown(flyDownKey))", movement, StringComparison.Ordinal);
+        Assert.Contains("private void SetFlyHackEnabled(bool isEnabled)", movement, StringComparison.Ordinal);
+        Assert.Contains("GameplayInputRelease.Send()", movement, StringComparison.Ordinal);
+        Assert.Contains("RestoreFlightPhysics()", movement, StringComparison.Ordinal);
+        Assert.Contains("FlattenFlightDirection(transform.forward", movement, StringComparison.Ordinal);
+        Assert.Contains("Vector3.ProjectOnPlane(direction, Vector3.up)", movement, StringComparison.Ordinal);
+        Assert.Contains("zero.sqrMagnitude > 0.0001f", movement, StringComparison.Ordinal);
         Assert.DoesNotContain("|| IsKeyDown(KeyCode.Space)", movement, StringComparison.Ordinal);
         Assert.DoesNotContain("|| IsKeyDown(KeyCode.LeftControl)", movement, StringComparison.Ordinal);
     }
@@ -492,6 +518,8 @@ public sealed class SourceArchitectureTests
         Assert.Contains("hasMovementBaseline", movement, StringComparison.Ordinal);
         Assert.Contains("RestoreFlightPhysics", behaviour, StringComparison.Ordinal);
         Assert.Contains("wasKinematicBeforeFlying = rigidbody.isKinematic", movement, StringComparison.Ordinal);
+        Assert.Contains("rigidbody.linearVelocity = Vector3.zero", movement, StringComparison.Ordinal);
+        Assert.Contains("rigidbody.angularVelocity = Vector3.zero", movement, StringComparison.Ordinal);
         Assert.Contains("rigidbody.isKinematic = wasKinematicBeforeFlying", movement, StringComparison.Ordinal);
     }
 
