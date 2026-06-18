@@ -182,6 +182,26 @@ namespace ModMenu
             return (GetAsyncKeyState(num) & 0x8000) != 0;
         }
 
+        // Routes every no-clip toggle through the same input and physics cleanup
+        private void SetFlyHackEnabled(bool isEnabled)
+        {
+            if (flyHackEnabled == isEnabled)
+            {
+                return;
+            }
+
+            flyHackEnabled = isEnabled;
+            if (flyHackEnabled)
+            {
+                // Existing gameplay input is released before direct movement owns the body
+                GameplayInputRelease.Send();
+            }
+            else
+            {
+                RestoreFlightPhysics();
+            }
+        }
+
         // Moves the local player while no clip is enabled and restores physics on exit
         private void FlyUpdate()
         {
@@ -207,37 +227,42 @@ namespace ModMenu
                     {
                         // Kinematic mode prevents physics from fighting direct position movement
                         wasKinematicBeforeFlying = rigidbody.isKinematic;
+                        rigidbody.linearVelocity = Vector3.zero;
+                        rigidbody.angularVelocity = Vector3.zero;
                         rigidbody.isKinematic = true;
                         wasFlying = true;
                     }
                     Transform transform = ((Camera.main != null) ? Camera.main.transform : cachedLocalPC.transform);
+                    // Horizontal vectors keep normal movement from inheriting camera pitch
+                    Vector3 forward = FlattenFlightDirection(transform.forward, cachedLocalPC.transform.forward);
+                    Vector3 right = FlattenFlightDirection(transform.right, cachedLocalPC.transform.right);
                     Vector3 zero = Vector3.zero;
                     FieldInfo field2 = typeof(PlayerController).GetField("_moveInput", BindingFlags.Instance | BindingFlags.NonPublic);
                     if (field2 != null)
                     {
                         // Reuse the game's processed input so rebinding and controllers still work
                         Vector2 vector = (Vector2)field2.GetValue(cachedLocalPC);
-                        zero += transform.forward * vector.y;
-                        zero += transform.right * vector.x;
+                        zero += forward * vector.y;
+                        zero += right * vector.x;
                     }
                     else
                     {
                         // Keyboard polling remains available when the private input field changes
                         if (IsKeyDown(KeyCode.W))
                         {
-                            zero += transform.forward;
+                            zero += forward;
                         }
                         if (IsKeyDown(KeyCode.S))
                         {
-                            zero -= transform.forward;
+                            zero -= forward;
                         }
                         if (IsKeyDown(KeyCode.A))
                         {
-                            zero -= transform.right;
+                            zero -= right;
                         }
                         if (IsKeyDown(KeyCode.D))
                         {
-                            zero += transform.right;
+                            zero += right;
                         }
                     }
                     if (IsKeyDown(flyUpKey))
@@ -248,11 +273,16 @@ namespace ModMenu
                     {
                         zero -= Vector3.up;
                     }
-                    cachedLocalPC.transform.position += zero.normalized * 15f * flySpeedMultiplier * Time.deltaTime;
+                    if (zero.sqrMagnitude > 0.0001f)
+                    {
+                        cachedLocalPC.transform.position += zero.normalized * 15f * flySpeedMultiplier * Time.deltaTime;
+                    }
                 }
                 else if (wasFlying)
                 {
                     // Physics resumes only after a no-clip session actually changed the body
+                    rigidbody.linearVelocity = Vector3.zero;
+                    rigidbody.angularVelocity = Vector3.zero;
                     rigidbody.isKinematic = wasKinematicBeforeFlying;
                     wasFlying = false;
                     wasKinematicBeforeFlying = false;
@@ -261,6 +291,18 @@ namespace ModMenu
             catch
             {
             }
+        }
+
+        // Keeps camera pitch from turning forward movement into vertical falling or climbing
+        private static Vector3 FlattenFlightDirection(Vector3 direction, Vector3 fallback)
+        {
+            Vector3 flattened = Vector3.ProjectOnPlane(direction, Vector3.up);
+            if (flattened.sqrMagnitude > 0.0001f)
+            {
+                return flattened.normalized;
+            }
+
+            return Vector3.ProjectOnPlane(fallback, Vector3.up).normalized;
         }
 
         // Restores the local rigidbody when no clip is interrupted outside the normal update path
@@ -277,6 +319,8 @@ namespace ModMenu
                 Rigidbody? rigidbody = field?.GetValue(cachedLocalPC) as Rigidbody;
                 if (rigidbody != null)
                 {
+                    rigidbody.linearVelocity = Vector3.zero;
+                    rigidbody.angularVelocity = Vector3.zero;
                     rigidbody.isKinematic = wasKinematicBeforeFlying;
                 }
             }

@@ -42,7 +42,8 @@ namespace ModMenu
                 jumpMultiplier = GUILayout.HorizontalSlider(jumpMultiplier, 0.5f, 5f);
                 GUILayout.EndHorizontal();
             }
-            flyHackEnabled = GUILayout.Toggle(flyHackEnabled, flyHackEnabled ? " NO CLIP ACTIVE" : " No Clip");
+            bool requestedFlyEnabled = GUILayout.Toggle(flyHackEnabled, flyHackEnabled ? " NO CLIP ACTIVE" : " No Clip");
+            SetFlyHackEnabled(requestedFlyEnabled);
             if (flyHackEnabled)
             {
                 // Flight speed remains separate from the grounded movement multiplier
