@@ -79,7 +79,9 @@ namespace ModMenu
 
         private bool wasKinematicBeforeFlying;
 
-        private string moneyInputStr = "10000";
+        private const string MoneyAmountControlName = "CasinoMenu_MoneyAmountInput";
+
+        private string moneyInputStr = CurrencyPolicy.DefaultMoneyInput;
 
         private KeyCode addMoneyKey;
 
@@ -666,6 +668,11 @@ namespace ModMenu
             IsMenuOpen = showMenu;
             if (!showMenu)
             {
+                if (wasMenuOpen)
+                {
+                    // Restore held keys that never received a fresh performed callback
+                    GameplayInputRelease.SendKeyboardSnapshot();
+                }
                 wasMenuOpen = false;
                 return;
             }

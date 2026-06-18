@@ -24,10 +24,17 @@ namespace ModMenu
             }
             GUILayout.BeginHorizontal();
             GUILayout.Label("  Amount: $", GUILayout.Width(70f));
-            moneyInputStr = GUILayout.TextField(moneyInputStr, GUILayout.Width(150f));
+            // Naming the field lets the policy preserve an empty active edit
+            GUI.SetNextControlName(MoneyAmountControlName);
+            string editedMoney = GUILayout.TextField(moneyInputStr, 20, GUILayout.Width(150f));
+            moneyInputStr = CurrencyPolicy.NormalizeMoneyInput(
+                editedMoney,
+                GUI.GetNameOfFocusedControl() == MoneyAmountControlName);
             GUILayout.EndHorizontal();
-            // Invalid input stays at zero and cannot trigger either balance action
-            long result = long.TryParse(moneyInputStr, out long parsedAmount) ? parsedAmount : 0L;
+            // Blank or zero input cannot trigger either balance action
+            long result = CurrencyPolicy.TryParsePositiveAmount(moneyInputStr, out long parsedAmount)
+                ? parsedAmount
+                : 0L;
             GUILayout.BeginHorizontal();
             if (GUILayout.Button($"  Add ${result:N0}") && result > 0)
             {

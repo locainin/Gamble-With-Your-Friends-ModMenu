@@ -132,7 +132,7 @@ namespace ModMenu
                 }
                 else if (!showMenu && flyToggleKey != KeyCode.None && current.keyCode == flyToggleKey)
                 {
-                    flyHackEnabled = !flyHackEnabled;
+                    SetFlyHackEnabled(!flyHackEnabled);
                     ModMenuLoader.Log("Fly " + (flyHackEnabled ? "Enabled" : "Disabled"));
                     current.Use();
                 }
@@ -143,8 +143,7 @@ namespace ModMenu
                 }
                 else if (!showMenu && addMoneyKey != KeyCode.None && current.keyCode == addMoneyKey)
                 {
-                    long result = 0L;
-                    if (long.TryParse(moneyInputStr, out result) && result > 0)
+                    if (CurrencyPolicy.TryParsePositiveAmount(moneyInputStr, out long result))
                     {
                         AddMoney(result);
                     }
@@ -152,8 +151,7 @@ namespace ModMenu
                 }
                 else if (!showMenu && removeMoneyKey != KeyCode.None && current.keyCode == removeMoneyKey)
                 {
-                    long result2 = 0L;
-                    if (long.TryParse(moneyInputStr, out result2) && result2 > 0)
+                    if (CurrencyPolicy.TryParsePositiveAmount(moneyInputStr, out long result2))
                     {
                         RemoveMoney(result2);
                     }
